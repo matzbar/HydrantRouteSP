@@ -1,0 +1,184 @@
+@import url('https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700;800;900&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap');
+@import url('https://unpkg.com/leaflet@1.9.4/dist/leaflet.css');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --bg-dark: #0B0F17;
+  --surface-card: #121824;
+  --surface-elevated: #1A2234;
+  --border-tactical: #26334D;
+  --text-primary: #F8FAFC;
+  --text-secondary: #94A3B8;
+  --text-muted: #64748B;
+  --fire-red: #EF4444;
+  --fire-red-hover: #DC2626;
+  --tactical-amber: #F59E0B;
+  --status-op: #10B981;
+  --status-inop: #EF4444;
+  --type-sub: #3B82F6;
+  --type-col: #8B5CF6;
+  --route-path: #38BDF8;
+}
+
+html, body, #root {
+  background-color: var(--bg-dark);
+  color: var(--text-primary);
+  min-height: 100vh;
+}
+
+body {
+  margin: 0;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  overflow-x: hidden;
+}
+
+.font-display {
+  font-family: 'Barlow Condensed', sans-serif;
+  letter-spacing: 0.02em;
+}
+.font-mono-t {
+  font-family: 'JetBrains Mono', monospace;
+}
+
+@layer base {
+  :root {
+    --background: 220 30% 7%;
+    --foreground: 210 40% 98%;
+    --card: 221 28% 11%;
+    --card-foreground: 210 40% 98%;
+    --popover: 221 28% 11%;
+    --popover-foreground: 210 40% 98%;
+    --primary: 0 84% 60%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 220 20% 18%;
+    --secondary-foreground: 210 40% 98%;
+    --muted: 220 20% 18%;
+    --muted-foreground: 215 20% 65%;
+    --accent: 220 20% 18%;
+    --accent-foreground: 210 40% 98%;
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 220 24% 23%;
+    --input: 220 24% 23%;
+    --ring: 0 84% 60%;
+    --radius: 0.5rem;
+  }
+}
+
+@layer base {
+  * { @apply border-border; }
+}
+
+/* Leaflet dark tweaks */
+.leaflet-container {
+  background: #0B0F17 !important;
+  font-family: 'Inter', sans-serif;
+}
+.leaflet-tile {
+  filter: brightness(0.75) saturate(0.85) contrast(1.05);
+}
+.leaflet-control-attribution,
+.leaflet-control-zoom a {
+  background: rgba(18, 24, 36, 0.9) !important;
+  color: #94A3B8 !important;
+  border-color: #26334D !important;
+}
+.leaflet-control-zoom a {
+  border: 1px solid #26334D !important;
+}
+.leaflet-popup-content-wrapper,
+.leaflet-popup-tip {
+  background: #121824 !important;
+  color: #F8FAFC !important;
+  border: 1px solid #26334D;
+}
+
+/* Custom hydrant marker */
+.hydrant-pin {
+  background: transparent;
+  border: none;
+}
+.hydrant-pin-inner {
+  width: 32px;
+  height: 32px;
+  border-radius: 50% 50% 50% 0;
+  transform: rotate(-45deg);
+  border: 2px solid #0B0F17;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  color: #ffffff;
+  font-size: 11px;
+  font-family: 'JetBrains Mono', monospace;
+}
+.hydrant-pin-inner > span { transform: rotate(45deg); }
+
+.gps-pin {
+  background: transparent;
+  border: none;
+}
+.gps-pin-dot {
+  width: 20px;
+  height: 20px;
+  background: #38BDF8;
+  border: 3px solid #0B0F17;
+  border-radius: 50%;
+  box-shadow: 0 0 0 4px rgba(56, 189, 248, 0.25);
+  animation: gpsPulse 1.8s ease-out infinite;
+}
+@keyframes gpsPulse {
+  0% { box-shadow: 0 0 0 0 rgba(56, 189, 248, 0.6); }
+  70% { box-shadow: 0 0 0 16px rgba(56, 189, 248, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(56, 189, 248, 0); }
+}
+
+/* Scrollbar */
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-track { background: #121824; }
+::-webkit-scrollbar-thumb { background: #26334D; border-radius: 4px; }
+::-webkit-scrollbar-thumb:hover { background: #38475F; }
+
+/* Tactical card */
+.tactical-card {
+  background: var(--surface-card);
+  border: 1px solid var(--border-tactical);
+  border-radius: 8px;
+}
+.tactical-elevated {
+  background: var(--surface-elevated);
+  border: 1px solid var(--border-tactical);
+}
+
+.btn-tactical-red {
+  background: var(--fire-red);
+  color: white;
+  transition: background-color 180ms ease, transform 100ms ease, box-shadow 200ms ease;
+}
+.btn-tactical-red:hover {
+  background: var(--fire-red-hover);
+  box-shadow: 0 0 0 4px rgba(239, 68, 68, 0.18);
+}
+.btn-tactical-red:active {
+  transform: translateY(1px);
+}
+
+.status-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+
+.grain-overlay {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0.04;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+}
