@@ -10,6 +10,12 @@ import HydrantForm from "../components/HydrantForm";
 import CsvUpload from "../components/CsvUpload";
 import HydrantTable from "../components/HydrantTable";
 import RouteResult from "../components/RouteResult";
+import StartPointPicker from "../components/StartPointPicker";
+import { RefreshCw } from "lucide-react";
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription,
+  AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger,
+} from "../components/ui/alert-dialog";
 import {
   listHydrants,
   createHydrant,
@@ -17,6 +23,7 @@ import {
   deleteAllHydrants,
   bulkUpload,
   scrapeHydrants,
+  reimportHydrants,
   optimizeRoute,
   geocodeStatus,
   geocodeRetry,
@@ -32,6 +39,7 @@ export default function Dashboard() {
   const [route, setRoute] = useState(null);
   const [routeOpen, setRouteOpen] = useState(false);
   const [maxStops, setMaxStops] = useState(5);
+  const [startId, setStartId] = useState(null);
 
   const refresh = useCallback(async () => {
     try {
@@ -126,6 +134,22 @@ export default function Dashboard() {
     }
   };
 
+  const handleReimport = async () => {
+    setLoading((l) => ({ ...l, scrape: true }));
+    try {
+      const data = await reimportHydrants();
+      setRoute(null);
+      setStartId(null);
+      toast.success(`Lista atualizada: ${data.inserted} hidrantes importados do CB SP`);
+      pollGeocode();
+    } catch (e) {
+      toast.error(e.response?.data?.detail || "Erro ao reimportar do CB SP");
+      refresh();
+    } finally {
+      setLoading((l) => ({ ...l, scrape: false }));
+    }
+  };
+
   const handleDelete = async (id) => {
     try { await deleteHydrant(id); toast.success("Hidrante removido"); refresh(); }
     catch { toast.error("Erro ao remover"); }
@@ -154,8 +178,9 @@ export default function Dashboard() {
         origin_lon: origin.lon,
         hydrant_ids: geocoded.map((h) => h.id),
         max_stops: maxStops,
+        start_hydrant_id: startId,
       });
-      setRoute(result);
+      setRoute({ ...result, start_id: startId });
       setRouteOpen(true);
       toast.success(`Rota com ${result.stops.length} paradas gerada`);
     } catch (e) {
@@ -167,14 +192,17 @@ export default function Dashboard() {
 
   const stats = useMemo(() => {
     const ok = hydrants.filter((h) => h.status === "possivel_de_uso").length;
-    const inop = hydrants.length - ok;
+    const inop = hydrants.filter((h) => h.status !== "possivel_de_uso").length;
     const geo = hydrants.filter((h) => h.geocoded).length;
     return { total: hydrants.length, ok, inop, geo };
   }, [hydrants]);
 
   const routeOrderIds = route?.stops.map((s) => s.hydrant.id);
   const routePolyline = route
-    ? [[(gps || SP_FALLBACK).lat, (gps || SP_FALLBACK).lon], ...route.stops.map((s) => [s.hydrant.lat, s.hydrant.lon])]
+    ? [
+        ...(route.start_id ? [] : [[(gps || SP_FALLBACK).lat, (gps || SP_FALLBACK).lon]]),
+        ...route.stops.map((s) => [s.hydrant.lat, s.hydrant.lon]),
+      ]
     : null;
 
   return (
@@ -220,7 +248,7 @@ export default function Dashboard() {
           {[
             { label: "Total", value: stats.total, color: "#F8FAFC", id: "total" },
             { label: "Possível de uso", value: stats.ok, color: "#10B981", id: "ok" },
-            { label: "Inoperante", value: stats.inop, color: "#EF4444", id: "inop" },
+            { label: "Inoperante / Não localizado", value: stats.inop, color: "#EF4444", id: "inop" },
             { label: "Geocodificados", value: stats.geo, color: "#38BDF8", id: "geo" },
           ].map((s) => (
             <div key={s.id} className="tactical-card p-4" data-testid={`stat-${s.id}`}>
@@ -298,6 +326,10 @@ export default function Dashboard() {
           <div className="tactical-card p-5 space-y-4">
             <h2 className="font-display text-lg font-bold uppercase tracking-wider">Ações</h2>
 
+            <div className="rounded-lg bg-[#0B0F17] border border-[#26334D] p-4">
+              <StartPointPicker hydrants={hydrants} value={startId} onChange={setStartId} />
+            </div>
+
             <div className="space-y-3 rounded-lg bg-[#0B0F17] border border-[#26334D] p-4">
               <div className="flex items-end justify-between gap-3">
                 <div>
@@ -355,7 +387,7 @@ export default function Dashboard() {
               Limpar Base
             </Button>
             <p className="text-[11px] text-slate-500 leading-relaxed">
-              A rota parte do seu GPS e visita os N hidrantes mais próximos encadeados pelo algoritmo de vizinho mais próximo + roteamento OSRM.
+              A rota parte do hidrante escolhido (ou do seu GPS) e visita os N hidrantes mais próximos em sequência (vizinho mais próximo + roteamento OSRM).
             </p>
           </div>
         </aside>
@@ -372,7 +404,34 @@ export default function Dashboard() {
           </div>
 
           <div className="tactical-card p-5">
-            <h2 className="font-display text-lg font-bold uppercase tracking-wider mb-4">Lista de Hidrantes</h2>
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
+              <h2 className="font-display text-lg font-bold uppercase tracking-wider">Lista de Hidrantes</h2>
+              <AlertDialog>
+                <AlertDialogTrigger asChild>
+                  <Button
+                    size="sm"
+                    disabled={loading.scrape}
+                    data-testid="reimport-btn"
+                    className="bg-[#1A2234] hover:bg-[#26334D] border border-[#26334D] text-slate-100 font-mono-t text-xs uppercase tracking-widest"
+                  >
+                    {loading.scrape ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <RefreshCw className="w-4 h-4 mr-2" />}
+                    Excluir tudo e reimportar
+                  </Button>
+                </AlertDialogTrigger>
+                <AlertDialogContent className="bg-[#121824] border-[#26334D] text-slate-100">
+                  <AlertDialogHeader>
+                    <AlertDialogTitle className="font-display uppercase tracking-wider">Atualizar lista de hidrantes?</AlertDialogTitle>
+                    <AlertDialogDescription className="text-slate-400">
+                      Todos os {hydrants.length} hidrantes cadastrados serão excluídos (inclusive os manuais e de CSV) e a tabela atual do CB SP será importada novamente.
+                    </AlertDialogDescription>
+                  </AlertDialogHeader>
+                  <AlertDialogFooter>
+                    <AlertDialogCancel data-testid="reimport-cancel" className="bg-transparent border-[#26334D] text-slate-300 hover:bg-[#1A2234] hover:text-white">Cancelar</AlertDialogCancel>
+                    <AlertDialogAction data-testid="reimport-confirm" onClick={handleReimport} className="btn-tactical-red">Excluir e reimportar</AlertDialogAction>
+                  </AlertDialogFooter>
+                </AlertDialogContent>
+              </AlertDialog>
+            </div>
             <HydrantTable hydrants={hydrants} onDelete={handleDelete} />
           </div>
         </section>

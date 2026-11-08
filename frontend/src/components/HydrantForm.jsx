@@ -97,6 +97,7 @@ export default function HydrantForm({ onSubmit, loading }) {
             <SelectContent className="bg-[#121824] border-[#26334D] text-slate-100">
               <SelectItem value="possivel_de_uso">Possível de uso</SelectItem>
               <SelectItem value="inoperante">Inoperante</SelectItem>
+              <SelectItem value="nao_localizado">Não localizado</SelectItem>
             </SelectContent>
           </Select>
         </div>

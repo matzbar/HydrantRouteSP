@@ -5,7 +5,7 @@ import L from "leaflet";
 const SP_CENTER = [-23.5612, -46.6558];
 
 const typeColor = { subterraneo: "#3B82F6", coluna: "#8B5CF6" };
-const statusRing = { possivel_de_uso: "#10B981", inoperante: "#EF4444" };
+const statusRing = { possivel_de_uso: "#10B981", inoperante: "#EF4444", nao_localizado: "#F59E0B" };
 
 function buildIcon(h, idx) {
   const bg = typeColor[h.type] || "#3B82F6";
@@ -80,7 +80,7 @@ export default function HydrantMap({ hydrants, gps, routeOrder, routePolyline })
                   <div style={{ color: "#94A3B8", fontSize: 12, textTransform: "uppercase" }}>
                     {h.type === "subterraneo" ? "Subterrâneo" : "Coluna"} ·{" "}
                     <span style={{ color: statusRing[h.status] }}>
-                      {h.status === "possivel_de_uso" ? "Possível de uso" : "Inoperante"}
+                      {{ possivel_de_uso: "Possível de uso", inoperante: "Inoperante", nao_localizado: "Não localizado" }[h.status]}
                     </span>
                   </div>
                   <div style={{ marginTop: 6, fontSize: 13 }}>{h.address}</div>

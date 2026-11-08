@@ -57,7 +57,7 @@ export default function RouteResult({ open, onClose, result }) {
                   <span className="font-mono-t font-bold text-white text-sm">{s.hydrant.code}</span>
                   <span
                     className="status-dot"
-                    style={{ backgroundColor: s.hydrant.status === "possivel_de_uso" ? "#10B981" : "#EF4444" }}
+                    style={{ backgroundColor: { possivel_de_uso: "#10B981", inoperante: "#EF4444", nao_localizado: "#F59E0B" }[s.hydrant.status] }}
                   />
                 </div>
                 <div className="text-xs text-slate-400 truncate" title={s.hydrant.address}>
@@ -85,7 +85,7 @@ export default function RouteResult({ open, onClose, result }) {
                 <a key={url} href={url} target="_blank" rel="noopener noreferrer" data-testid={`google-maps-link-${i + 1}`}>
                   <Button className="w-full btn-tactical-red font-display uppercase tracking-wider text-sm font-bold">
                     <ExternalLink className="w-4 h-4 mr-2" />
-                    Trecho {i + 1} · paradas {i * 10 + 1}–{Math.min((i + 1) * 10, result.stops.length)}
+                    Abrir trecho {i + 1}
                   </Button>
                 </a>
               ))}

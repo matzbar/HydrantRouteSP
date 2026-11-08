@@ -43,6 +43,7 @@ INDEXES: dict[str, list[IndexModel]] = {
         IndexModel([("id", ASCENDING)], name="id", unique=True),
         IndexModel([("code", ASCENDING)], name="code_unique", unique=True),
     ],
+    "geocache": [IndexModel([("key", ASCENDING)], name="key_unique", unique=True)],
 }
 
 
@@ -63,7 +64,7 @@ api_router = APIRouter(prefix="/api")
 
 # ----------------------------- Models -----------------------------
 TYPE_VALUES = {"subterraneo", "coluna"}
-STATUS_VALUES = {"possivel_de_uso", "inoperante"}
+STATUS_VALUES = {"possivel_de_uso", "inoperante", "nao_localizado"}
 
 
 def norm_type(v: str) -> str:
@@ -82,6 +83,8 @@ def norm_status(v: str) -> str:
         return "inoperante"
     if "possivel" in s:
         return "possivel_de_uso"
+    if "localizado" in s:
+        return "nao_localizado"
     raise HTTPException(422, f"Situação inválida: {v}")
 
 
@@ -132,6 +135,7 @@ class RouteRequest(BaseModel):
     origin_lon: float
     hydrant_ids: Optional[List[str]] = None
     max_stops: Optional[int] = Field(None, ge=1)
+    start_hydrant_id: Optional[str] = None
 
 
 class RouteStop(BaseModel):
@@ -256,10 +260,22 @@ async def arcgis_query(hc: httpx.AsyncClient, single_line: str) -> Optional[dict
 
 
 async def geocode_address(address: str, municipality: str) -> Optional[dict]:
-    """Geocode: ArcGIS (supports 'X & Y' intersections) → Photon → Nominatim."""
+    """Geocode with a persistent Mongo cache so re-imports are instant."""
     address = (address or "").strip()
     if not address:
         return None
+    key = f"{_fold(address)}|{_fold(municipality)}"
+    cached = await db.geocache.find_one({"key": key}, {"_id": 0})
+    if cached:
+        return {"lat": cached["lat"], "lon": cached["lon"]}
+    res = await _geocode_remote(address, municipality)
+    if res:
+        await db.geocache.update_one({"key": key}, {"$set": {"key": key, "lat": res["lat"], "lon": res["lon"]}}, upsert=True)
+    return res
+
+
+async def _geocode_remote(address: str, municipality: str) -> Optional[dict]:
+    """Geocode: ArcGIS (supports 'X & Y' intersections) → Photon → Nominatim."""
     full_city = f"{municipality}, {DEFAULT_STATE}, Brasil"
     headers = {"User-Agent": USER_AGENT, "Accept": "application/json", "Accept-Language": "pt-BR,pt;q=0.9"}
     candidates = address_candidates(address)
@@ -543,6 +559,13 @@ async def scrape_hydrants():
     return ScrapeResponse(fetched=fetched, inserted=inserted, skipped=skipped, geocoded=geocoded_count)
 
 
+@api_router.post("/hydrants/reimport", response_model=ScrapeResponse)
+async def reimport_hydrants():
+    """Delete all hydrants and import the current CB SP table again."""
+    await db.hydrants.delete_many({})
+    return await scrape_hydrants()
+
+
 @api_router.get("/hydrants/geocode-status")
 async def geocode_status():
     total = await db.hydrants.count_documents({})
@@ -572,9 +595,19 @@ async def optimize_route(req: RouteRequest):
     if not geocoded:
         raise HTTPException(400, "Nenhum hidrante possui coordenadas geocodificadas")
 
-    origin = (req.origin_lat, req.origin_lon)
+    start = None
+    if req.start_hydrant_id:
+        start = next((h for h in geocoded if h.id == req.start_hydrant_id), None)
+        if not start:
+            raise HTTPException(400, "Hidrante de início não encontrado ou sem coordenadas")
+        geocoded = [h for h in geocoded if h.id != start.id]
+        origin = (start.lat, start.lon)
+        limit = req.max_stops - 1 if req.max_stops else None
+    else:
+        origin = (req.origin_lat, req.origin_lon)
+        limit = req.max_stops
     points = [(h.lat, h.lon) for h in geocoded]
-    order = nearest_neighbor_order(origin, points, limit=req.max_stops)
+    order = nearest_neighbor_order(origin, points, limit=limit) if limit != 0 else []
     ordered_hydrants = [geocoded[i] for i in order]
     ordered_coords = [(h.lat, h.lon) for h in ordered_hydrants]
 
@@ -591,16 +624,18 @@ async def optimize_route(req: RouteRequest):
             legs_dist_km.append(d)
             legs_dur_min.append((d / 40.0) * 60.0)
 
-    stops = []
+    stops = [RouteStop(order=1, hydrant=start, distance_from_prev_km=0, duration_from_prev_min=0)] if start else []
+    offset = len(stops)
     for idx_, h in enumerate(ordered_hydrants):
         stops.append(RouteStop(
-            order=idx_ + 1,
+            order=idx_ + 1 + offset,
             hydrant=h,
             distance_from_prev_km=round(legs_dist_km[idx_], 2) if idx_ < len(legs_dist_km) else 0,
             duration_from_prev_min=round(legs_dur_min[idx_], 1) if idx_ < len(legs_dur_min) else 0,
         ))
 
-    gmaps_url = build_google_maps_url(origin, ordered_coords)
+    gmaps_url = build_google_maps_url(origin, ordered_coords) or (
+        f"https://www.google.com/maps/search/?api=1&query={origin[0]},{origin[1]}")
     # Google Maps allows ~9 waypoints per link: split long routes into chained segments of 10 stops
     segments, seg_origin = [], origin
     for i in range(0, len(ordered_coords), 10):

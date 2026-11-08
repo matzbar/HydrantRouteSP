@@ -12,6 +12,7 @@ export const deleteHydrant = (id) => api.delete(`/hydrants/${id}`).then((r) => r
 export const deleteAllHydrants = () => api.delete("/hydrants").then((r) => r.data);
 export const geocodeStatus = () => api.get("/hydrants/geocode-status").then((r) => r.data);
 export const geocodeRetry = () => api.post("/hydrants/geocode-retry").then((r) => r.data);
+export const reimportHydrants = () => api.post("/hydrants/reimport").then((r) => r.data);
 export const scrapeHydrants = () => api.post("/hydrants/scrape").then((r) => r.data);
 export const bulkUpload = (file) => {
   const fd = new FormData();

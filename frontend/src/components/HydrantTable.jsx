@@ -5,9 +5,9 @@ import { Badge } from "./ui/badge";
 import { Trash2, Search, AlertTriangle } from "lucide-react";
 
 const typeLabel = { subterraneo: "Subterrâneo", coluna: "Coluna" };
-const statusLabel = { possivel_de_uso: "Possível de uso", inoperante: "Inoperante" };
-const statusShort = { possivel_de_uso: "OK", inoperante: "INOP" };
-const statusColor = { possivel_de_uso: "#10B981", inoperante: "#EF4444" };
+const statusLabel = { possivel_de_uso: "Possível de uso", inoperante: "Inoperante", nao_localizado: "Não localizado" };
+const statusShort = { possivel_de_uso: "OK", inoperante: "INOP", nao_localizado: "N/LOC" };
+const statusColor = { possivel_de_uso: "#10B981", inoperante: "#EF4444", nao_localizado: "#F59E0B" };
 
 export default function HydrantTable({ hydrants, onDelete }) {
   const [q, setQ] = useState("");
@@ -62,7 +62,7 @@ export default function HydrantTable({ hydrants, onDelete }) {
           ))}
         </div>
         <div className="flex gap-1.5 flex-wrap">
-          {["todos", "possivel_de_uso", "inoperante"].map((s) => (
+          {["todos", "possivel_de_uso", "inoperante", "nao_localizado"].map((s) => (
             <button
               key={s}
               type="button"
@@ -142,7 +142,7 @@ export default function HydrantTable({ hydrants, onDelete }) {
                       />
                       <span
                         className="text-xs font-mono-t uppercase tracking-wider"
-                        style={{ color: h.status === "possivel_de_uso" ? "#34D399" : "#F87171" }}
+                        style={{ color: statusColor[h.status] }}
                       >
                         {statusLabel[h.status]}
                       </span>
