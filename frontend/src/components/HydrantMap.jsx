@@ -5,7 +5,7 @@ import L from "leaflet";
 const SP_CENTER = [-23.5612, -46.6558];
 
 const typeColor = { subterraneo: "#3B82F6", coluna: "#8B5CF6" };
-const statusRing = { operacional: "#10B981", inoperante: "#EF4444" };
+const statusRing = { possivel_de_uso: "#10B981", inoperante: "#EF4444" };
 
 function buildIcon(h, idx) {
   const bg = typeColor[h.type] || "#3B82F6";
@@ -53,7 +53,7 @@ export default function HydrantMap({ hydrants, gps, routeOrder, routePolyline })
   }, [routeOrder]);
 
   return (
-    <div className="w-full h-full rounded-lg overflow-hidden border border-[#26334D]" data-testid="hydrant-map">
+    <div className="w-full h-full rounded-lg overflow-hidden border border-[#26334D] relative z-0 isolate" data-testid="hydrant-map">
       <MapContainer
         center={SP_CENTER}
         zoom={12}
@@ -75,16 +75,17 @@ export default function HydrantMap({ hydrants, gps, routeOrder, routePolyline })
           return (
             <Marker key={h.id} position={[h.lat, h.lon]} icon={buildIcon(h, idx)}>
               <Popup>
-                <div style={{ fontFamily: "Inter, sans-serif", minWidth: 180 }}>
+                <div style={{ fontFamily: "Inter, sans-serif", minWidth: 200 }}>
                   <div style={{ fontWeight: 700, fontSize: 14 }}>{h.code}</div>
                   <div style={{ color: "#94A3B8", fontSize: 12, textTransform: "uppercase" }}>
                     {h.type === "subterraneo" ? "Subterrâneo" : "Coluna"} ·{" "}
                     <span style={{ color: statusRing[h.status] }}>
-                      {h.status === "operacional" ? "Operacional" : "Inoperante"}
+                      {h.status === "possivel_de_uso" ? "Possível de uso" : "Inoperante"}
                     </span>
                   </div>
-                  <div style={{ marginTop: 6, fontSize: 13 }}>
-                    {h.street}, {h.number}
+                  <div style={{ marginTop: 6, fontSize: 13 }}>{h.address}</div>
+                  <div style={{ marginTop: 2, fontSize: 11, color: "#94A3B8" }}>
+                    {h.municipality} · Setor {h.sector || "—"}
                   </div>
                 </div>
               </Popup>

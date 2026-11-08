@@ -10,7 +10,9 @@ export const createHydrant = (payload) => api.post("/hydrants", payload).then((r
 export const updateHydrant = (id, payload) => api.put(`/hydrants/${id}`, payload).then((r) => r.data);
 export const deleteHydrant = (id) => api.delete(`/hydrants/${id}`).then((r) => r.data);
 export const deleteAllHydrants = () => api.delete("/hydrants").then((r) => r.data);
-export const seedHydrants = () => api.post("/hydrants/seed").then((r) => r.data);
+export const geocodeStatus = () => api.get("/hydrants/geocode-status").then((r) => r.data);
+export const geocodeRetry = () => api.post("/hydrants/geocode-retry").then((r) => r.data);
+export const scrapeHydrants = () => api.post("/hydrants/scrape").then((r) => r.data);
 export const bulkUpload = (file) => {
   const fd = new FormData();
   fd.append("file", file);

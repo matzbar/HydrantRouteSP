@@ -8,10 +8,11 @@ import { Plus, Loader2 } from "lucide-react";
 const DEFAULT = {
   code: "",
   type: "coluna",
-  status: "operacional",
-  street: "",
-  number: "",
-  city: "São Paulo, SP, Brasil",
+  address: "",
+  municipality: "São Paulo",
+  last_inspection: "",
+  status: "possivel_de_uso",
+  sector: "",
 };
 
 export default function HydrantForm({ onSubmit, loading }) {
@@ -21,8 +22,9 @@ export default function HydrantForm({ onSubmit, loading }) {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!form.code || !form.street) return;
-    await onSubmit(form);
+    if (!form.code || !form.address) return;
+    const payload = { ...form, last_inspection: form.last_inspection || null };
+    await onSubmit(payload);
     setForm(DEFAULT);
   };
 
@@ -33,71 +35,81 @@ export default function HydrantForm({ onSubmit, loading }) {
           <Label className="font-mono-t text-[10px] uppercase tracking-widest text-slate-400">Código / ID</Label>
           <Input
             data-testid="input-code"
-            placeholder="HDR-001"
+            placeholder="15214"
             value={form.code}
             onChange={(e) => update("code", e.target.value)}
             className="bg-[#0B0F17] border-[#26334D] text-slate-100"
             required
           />
         </div>
-        <div className="grid grid-cols-2 gap-2">
-          <div>
-            <Label className="font-mono-t text-[10px] uppercase tracking-widest text-slate-400">Tipo</Label>
-            <Select value={form.type} onValueChange={(v) => update("type", v)}>
-              <SelectTrigger data-testid="select-type" className="bg-[#0B0F17] border-[#26334D] text-slate-100">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent className="bg-[#121824] border-[#26334D] text-slate-100">
-                <SelectItem value="coluna">Coluna</SelectItem>
-                <SelectItem value="subterraneo">Subterrâneo</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-          <div>
-            <Label className="font-mono-t text-[10px] uppercase tracking-widest text-slate-400">Estado</Label>
-            <Select value={form.status} onValueChange={(v) => update("status", v)}>
-              <SelectTrigger data-testid="select-status" className="bg-[#0B0F17] border-[#26334D] text-slate-100">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent className="bg-[#121824] border-[#26334D] text-slate-100">
-                <SelectItem value="operacional">Operacional</SelectItem>
-                <SelectItem value="inoperante">Inoperante</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-        </div>
-      </div>
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-        <div className="sm:col-span-2">
-          <Label className="font-mono-t text-[10px] uppercase tracking-widest text-slate-400">Rua</Label>
-          <Input
-            data-testid="input-street"
-            placeholder="Avenida Paulista"
-            value={form.street}
-            onChange={(e) => update("street", e.target.value)}
-            className="bg-[#0B0F17] border-[#26334D] text-slate-100"
-            required
-          />
-        </div>
         <div>
-          <Label className="font-mono-t text-[10px] uppercase tracking-widest text-slate-400">Número</Label>
-          <Input
-            data-testid="input-number"
-            placeholder="1578"
-            value={form.number}
-            onChange={(e) => update("number", e.target.value)}
-            className="bg-[#0B0F17] border-[#26334D] text-slate-100"
-          />
+          <Label className="font-mono-t text-[10px] uppercase tracking-widest text-slate-400">Tipo</Label>
+          <Select value={form.type} onValueChange={(v) => update("type", v)}>
+            <SelectTrigger data-testid="select-type" className="bg-[#0B0F17] border-[#26334D] text-slate-100">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent className="bg-[#121824] border-[#26334D] text-slate-100">
+              <SelectItem value="coluna">Coluna</SelectItem>
+              <SelectItem value="subterraneo">Subterrâneo</SelectItem>
+            </SelectContent>
+          </Select>
         </div>
       </div>
       <div>
-        <Label className="font-mono-t text-[10px] uppercase tracking-widest text-slate-400">Cidade</Label>
+        <Label className="font-mono-t text-[10px] uppercase tracking-widest text-slate-400">Endereço</Label>
         <Input
-          data-testid="input-city"
-          value={form.city}
-          onChange={(e) => update("city", e.target.value)}
+          data-testid="input-address"
+          placeholder="Rua Luis Romanini esquina com a Rua Dr. Carlos Camilo Haddad"
+          value={form.address}
+          onChange={(e) => update("address", e.target.value)}
           className="bg-[#0B0F17] border-[#26334D] text-slate-100"
+          required
         />
+      </div>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <div>
+          <Label className="font-mono-t text-[10px] uppercase tracking-widest text-slate-400">Município</Label>
+          <Input
+            data-testid="input-municipality"
+            value={form.municipality}
+            onChange={(e) => update("municipality", e.target.value)}
+            className="bg-[#0B0F17] border-[#26334D] text-slate-100"
+          />
+        </div>
+        <div>
+          <Label className="font-mono-t text-[10px] uppercase tracking-widest text-slate-400">Última Vistoria</Label>
+          <Input
+            data-testid="input-last-inspection"
+            type="date"
+            value={form.last_inspection}
+            onChange={(e) => update("last_inspection", e.target.value)}
+            className="bg-[#0B0F17] border-[#26334D] text-slate-100"
+          />
+        </div>
+      </div>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <div>
+          <Label className="font-mono-t text-[10px] uppercase tracking-widest text-slate-400">Situação</Label>
+          <Select value={form.status} onValueChange={(v) => update("status", v)}>
+            <SelectTrigger data-testid="select-status" className="bg-[#0B0F17] border-[#26334D] text-slate-100">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent className="bg-[#121824] border-[#26334D] text-slate-100">
+              <SelectItem value="possivel_de_uso">Possível de uso</SelectItem>
+              <SelectItem value="inoperante">Inoperante</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+        <div>
+          <Label className="font-mono-t text-[10px] uppercase tracking-widest text-slate-400">Setor</Label>
+          <Input
+            data-testid="input-sector"
+            placeholder="4289"
+            value={form.sector}
+            onChange={(e) => update("sector", e.target.value)}
+            className="bg-[#0B0F17] border-[#26334D] text-slate-100"
+          />
+        </div>
       </div>
       <Button
         type="submit"

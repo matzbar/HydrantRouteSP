@@ -2,10 +2,9 @@ import React, { useRef, useState } from "react";
 import { Button } from "./ui/button";
 import { Upload, FileDown, Loader2 } from "lucide-react";
 
-const CSV_TEMPLATE = `code,type,status,street,number,city
-HDR-001,coluna,operacional,Avenida Paulista,1578,"São Paulo, SP"
-HDR-002,subterraneo,operacional,Rua da Consolação,930,"São Paulo, SP"
-HDR-003,coluna,inoperante,Praça da Sé,1,"São Paulo, SP"
+const CSV_TEMPLATE = `code,type,address,municipality,last_inspection,status,sector
+15214,subterraneo,RUA LUIS ROMANINI ESQUINA COM A RUA DOUTOR CARLOS CAMILO HADDAD,São Paulo,2026-02-05,inoperante,4289
+1976,subterraneo,RUA APARECIDA DE SAO MIGUEL ESQUINA COM A RUA ALTO DE SANTA HELENA,São Paulo,2026-05-16,possivel_de_uso,4691
 `;
 
 export default function CsvUpload({ onUpload, loading }) {
@@ -33,7 +32,7 @@ export default function CsvUpload({ onUpload, loading }) {
   return (
     <div className="space-y-3">
       <p className="text-xs text-slate-400 font-mono-t uppercase tracking-widest">
-        Colunas aceitas: code, type, status, street, number, city
+        Colunas: code, type, address, municipality, last_inspection, status, sector
       </p>
       <input
         ref={inputRef}

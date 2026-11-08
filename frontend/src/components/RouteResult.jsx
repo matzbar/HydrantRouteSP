@@ -57,11 +57,14 @@ export default function RouteResult({ open, onClose, result }) {
                   <span className="font-mono-t font-bold text-white text-sm">{s.hydrant.code}</span>
                   <span
                     className="status-dot"
-                    style={{ backgroundColor: s.hydrant.status === "operacional" ? "#10B981" : "#EF4444" }}
+                    style={{ backgroundColor: s.hydrant.status === "possivel_de_uso" ? "#10B981" : "#EF4444" }}
                   />
                 </div>
-                <div className="text-xs text-slate-400 truncate">
-                  {s.hydrant.street}, {s.hydrant.number}
+                <div className="text-xs text-slate-400 truncate" title={s.hydrant.address}>
+                  {s.hydrant.address}
+                </div>
+                <div className="text-[10px] text-slate-500 font-mono-t">
+                  {s.hydrant.municipality} · Setor {s.hydrant.sector || "—"}
                 </div>
               </div>
               <div className="text-right text-[10px] font-mono-t text-slate-500 uppercase tracking-widest">
@@ -72,18 +75,30 @@ export default function RouteResult({ open, onClose, result }) {
           ))}
         </div>
 
-        <a
-          href={result.google_maps_url}
-          target="_blank"
-          rel="noopener noreferrer"
-          data-testid="google-maps-link"
-          className="w-full"
-        >
-          <Button className="w-full btn-tactical-red font-display uppercase tracking-wider text-base font-bold py-6">
-            <ExternalLink className="w-5 h-5 mr-2" />
-            Abrir Rota no Google Maps
-          </Button>
-        </a>
+        {(result.google_maps_segments?.length || 0) > 1 ? (
+          <div className="space-y-2" data-testid="google-maps-segments">
+            <p className="text-[11px] text-slate-400">
+              O Google Maps aceita até 10 paradas por rota. Sua rota foi dividida em {result.google_maps_segments.length} trechos — abra em sequência.
+            </p>
+            <div className="grid grid-cols-2 gap-2">
+              {result.google_maps_segments.map((url, i) => (
+                <a key={url} href={url} target="_blank" rel="noopener noreferrer" data-testid={`google-maps-link-${i + 1}`}>
+                  <Button className="w-full btn-tactical-red font-display uppercase tracking-wider text-sm font-bold">
+                    <ExternalLink className="w-4 h-4 mr-2" />
+                    Trecho {i + 1} · paradas {i * 10 + 1}–{Math.min((i + 1) * 10, result.stops.length)}
+                  </Button>
+                </a>
+              ))}
+            </div>
+          </div>
+        ) : (
+          <a href={result.google_maps_url} target="_blank" rel="noopener noreferrer" data-testid="google-maps-link" className="w-full">
+            <Button className="w-full btn-tactical-red font-display uppercase tracking-wider text-base font-bold py-6">
+              <ExternalLink className="w-5 h-5 mr-2" />
+              Abrir Rota no Google Maps
+            </Button>
+          </a>
+        )}
       </DialogContent>
     </Dialog>
   );
