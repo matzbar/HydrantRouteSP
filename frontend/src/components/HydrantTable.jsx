@@ -83,7 +83,7 @@ export default function HydrantTable({ hydrants, onDelete }) {
       <div className="tactical-card overflow-hidden">
         <div className="max-h-[480px] overflow-y-auto overflow-x-auto">
           <table className="w-full text-sm" data-testid="hydrants-table">
-            <thead className="sticky top-0 bg-[#1A2234] text-slate-400 font-mono-t text-[10px] uppercase tracking-widest z-10">
+            <thead className="sticky top-0 bg-[#1A2234] text-slate-400 font-mono-t text-[10px] uppercase tracking-widest z-10 whitespace-nowrap">
               <tr>
                 <th className="px-3 py-2 text-left">Código</th>
                 <th className="px-3 py-2 text-left">Tipo</th>
@@ -132,7 +132,7 @@ export default function HydrantTable({ hydrants, onDelete }) {
                   </td>
                   <td className="px-3 py-2 text-slate-400 text-xs">{h.municipality}</td>
                   <td className="px-3 py-2 text-slate-400 text-xs font-mono-t whitespace-nowrap">
-                    {h.last_inspection || "—"}
+                    {h.last_inspection ? h.last_inspection.split("-").reverse().join("/") : "—"}
                   </td>
                   <td className="px-3 py-2">
                     <span className="inline-flex items-center gap-1.5 whitespace-nowrap">
@@ -144,7 +144,7 @@ export default function HydrantTable({ hydrants, onDelete }) {
                         className="text-xs font-mono-t uppercase tracking-wider"
                         style={{ color: h.status === "possivel_de_uso" ? "#34D399" : "#F87171" }}
                       >
-                        {statusShort[h.status]}
+                        {statusLabel[h.status]}
                       </span>
                     </span>
                   </td>

@@ -20,6 +20,7 @@ from fastapi import APIRouter, FastAPI, File, HTTPException, UploadFile
 from motor.motor_asyncio import AsyncIOMotorClient
 from pydantic import BaseModel, ConfigDict, Field
 from pymongo import ASCENDING, IndexModel
+from pymongo.errors import DuplicateKeyError
 from starlette.middleware.cors import CORSMiddleware
 
 ROOT_DIR = Path(__file__).parent
@@ -40,7 +41,7 @@ CB_TABLE_HEADING = "HIDRANTES PENDENTES DE VISTORIA - CICLO 2026 2º SEM"
 INDEXES: dict[str, list[IndexModel]] = {
     "hydrants": [
         IndexModel([("id", ASCENDING)], name="id", unique=True),
-        IndexModel([("code", ASCENDING)], name="code", unique=True),
+        IndexModel([("code", ASCENDING)], name="code_unique", unique=True),
     ],
 }
 
@@ -67,18 +68,21 @@ STATUS_VALUES = {"possivel_de_uso", "inoperante"}
 
 def norm_type(v: str) -> str:
     s = (v or "").lower().strip()
-    s = s.replace("â", "a").replace("ã", "a")
     if "subterr" in s:
         return "subterraneo"
-    return "coluna"
+    if "coluna" in s:
+        return "coluna"
+    raise HTTPException(422, f"Tipo inválido: {v}")
 
 
 def norm_status(v: str) -> str:
     s = (v or "").lower().strip()
-    s = s.replace("í", "i").replace("ó", "o").replace("á", "a")
+    s = s.replace("í", "i").replace("ó", "o").replace("á", "a").replace("_", " ")
     if "inoper" in s:
         return "inoperante"
-    return "possivel_de_uso"
+    if "possivel" in s:
+        return "possivel_de_uso"
+    raise HTTPException(422, f"Situação inválida: {v}")
 
 
 def parse_date_str(v: str) -> Optional[str]:
@@ -127,7 +131,7 @@ class RouteRequest(BaseModel):
     origin_lat: float
     origin_lon: float
     hydrant_ids: Optional[List[str]] = None
-    max_stops: Optional[int] = None
+    max_stops: Optional[int] = Field(None, ge=1)
 
 
 class RouteStop(BaseModel):
@@ -286,7 +290,7 @@ async def geocode_pending() -> None:
     try:
         docs = await db.hydrants.find({"geocoded": False, "geocode_failed": {"$ne": True}}, {"_id": 0}).to_list(5000)
         for d in docs:
-            coords = await geocode_address(d["address"], d.get("municipality") or DEFAULT_MUNICIPALITY)
+            coords = await geocode_address(d.get("address", ""), d.get("municipality") or DEFAULT_MUNICIPALITY)
             upd = {"lat": coords["lat"], "lon": coords["lon"], "geocoded": True} if coords else {"geocode_failed": True}
             await db.hydrants.update_one({"id": d["id"]}, {"$set": upd})
     finally:
@@ -380,14 +384,19 @@ async def create_hydrant(payload: HydrantCreate):
         h.lat = coords["lat"]
         h.lon = coords["lon"]
         h.geocoded = True
-    await db.hydrants.insert_one(hydrant_to_doc(h))
+    try:
+        await db.hydrants.insert_one(hydrant_to_doc(h))
+    except DuplicateKeyError:
+        raise HTTPException(400, f"Código {h.code} já cadastrado")
     return h
 
 
 @api_router.get("/hydrants", response_model=List[Hydrant])
 async def list_hydrants():
-    docs = await db.hydrants.find({}, {"_id": 0}).sort("code", 1).to_list(2000)
-    return [doc_to_hydrant(d) for d in docs]
+    docs = await db.hydrants.find({}, {"_id": 0}).to_list(5000)
+    items = [doc_to_hydrant(d) for d in docs]
+    items.sort(key=lambda h: (0, int(h.code), "") if h.code.isdigit() else (1, 0, h.code))
+    return items
 
 
 @api_router.put("/hydrants/{hydrant_id}", response_model=Hydrant)
@@ -403,6 +412,8 @@ async def update_hydrant(hydrant_id: str, payload: HydrantUpdate):
         updates["status"] = norm_status(updates["status"])
     if "last_inspection" in updates and updates["last_inspection"]:
         updates["last_inspection"] = parse_date_str(updates["last_inspection"])
+    if "code" in updates and await db.hydrants.find_one({"code": updates["code"], "id": {"$ne": hydrant_id}}):
+        raise HTTPException(400, f"Código {updates['code']} já cadastrado")
     addr_changed = any(k in updates for k in ("address", "municipality"))
     for k, v in updates.items():
         setattr(h, k, v)
@@ -411,7 +422,10 @@ async def update_hydrant(hydrant_id: str, payload: HydrantUpdate):
         h.lat = coords["lat"] if coords else None
         h.lon = coords["lon"] if coords else None
         h.geocoded = bool(coords)
-    await db.hydrants.replace_one({"id": hydrant_id}, hydrant_to_doc(h))
+    try:
+        await db.hydrants.replace_one({"id": hydrant_id}, hydrant_to_doc(h))
+    except DuplicateKeyError:
+        raise HTTPException(400, f"Código {h.code} já cadastrado")
     return h
 
 

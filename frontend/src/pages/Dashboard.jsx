@@ -45,10 +45,14 @@ export default function Dashboard() {
   const [geo, setGeo] = useState(null);
 
   const pollGeocode = useCallback(async () => {
-    const s = await geocodeStatus();
-    setGeo(s);
-    refresh();
-    if (s.running || s.pending > 0) setTimeout(pollGeocode, 3000);
+    try {
+      const s = await geocodeStatus();
+      setGeo(s);
+      refresh();
+      if (s.running || s.pending > 0) setTimeout(pollGeocode, 3000);
+    } catch {
+      setTimeout(pollGeocode, 6000);
+    }
   }, [refresh]);
 
   useEffect(() => { refresh(); pollGeocode(); }, [refresh, pollGeocode]);
@@ -129,10 +133,14 @@ export default function Dashboard() {
 
   const handleClearAll = async () => {
     if (!window.confirm("Remover TODOS os hidrantes?")) return;
-    await deleteAllHydrants();
-    setRoute(null);
-    toast.success("Lista limpa");
-    refresh();
+    try {
+      await deleteAllHydrants();
+      setRoute(null);
+      toast.success("Lista limpa");
+      refresh();
+    } catch {
+      toast.error("Erro ao limpar a base");
+    }
   };
 
   const handleRoute = async () => {

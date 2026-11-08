@@ -1,0 +1,42 @@
+{
+  "summary": "Iteration 2 (new schema code/type/address/municipality/last_inspection/status/sector). Backend: 12/14 pytest checks pass (11 passed on the run; the scrape idempotency check failed only as a side effect of the duplicate-code bug in a parallel test and passes when isolated (verified manually: fetched=50, inserted=0, skipped=50)). Real bugs: PUT allows duplicate code because the unique index on code is missing in Mongo; max_stops=0 returns 1 stop instead of an error. Frontend: all requested flows work. Table columns, stats (50/37/13/50), status filters (13 inop / 37 ok), search, manual form with all new fields (create, duplicate-code toast, delete), CB SP scrape toast '50 encontrados · 0 importados · 50 já existentes', max-stops input/slider clamped to the geocoded count (50), route 15 gives 15 stops + google-maps-link-1/2, route 5 gives 5 stops + a single google-maps-link. The route dialog (z-50) and its overlay sit above the Leaflet map (checked with elementFromPoint).",
+  "backend_issues": {
+    "critical": [
+      {"endpoint": "PUT /api/hydrants/{id}", "issue": "Changing code to an existing code returns 200 and creates duplicate codes (reproduced: two hydrants with code 1396; the TEST record was then deleted by id). RCA: Mongo already has a NON-unique index named 'code' from a previous version, so ensure_indexes fails at every startup with IndexKeySpecsConflict (see backend.err.log) and the unique constraint never exists. update_hydrant also has no duplicate check.", "priority": "HIGH"}
+    ],
+    "minor": [
+      {"endpoint": "POST /api/route/optimize", "issue": "max_stops=0 or negative returns 1 stop (nearest_neighbor_order appends before it checks the limit). Should validate max_stops >= 1 (Pydantic Field(ge=1)) or return 400."},
+      {"endpoint": "POST/PUT /api/hydrants", "issue": "type/status are not validated: any string is silently mapped to 'coluna'/'possivel_de_uso' (norm_type/norm_status fallbacks). Invalid values should return 422."},
+      {"endpoint": "POST /api/hydrants", "issue": "find_one then insert is not atomic. Once the unique index exists, a concurrent duplicate will raise DuplicateKeyError and return 500. Catch it and return 400."},
+      {"endpoint": "GET /api/hydrants", "issue": "Sorts by code as a string (lexicographic: 1396 < 15214 < 1558 < 45). Consider a numeric sort."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Manual form", "issues": ["Última Vistoria uses the browser's native date input (shows mm/dd/yyyy, not pt-BR) instead of the shadcn Calendar/Popover date picker"]},
+      {"screen": "Hydrant table", "issues": ["Situação column shows the short labels OK/INOP instead of 'Possível de uso'/'Inoperante' (statusLabel is defined but unused)", "Últ. Vistoria is shown in ISO YYYY-MM-DD; consider DD/MM/YYYY for pt-BR users"]}
+    ]
+  },
+  "test_report_links": ["/app/backend/tests/test_hydrants_api.py", "/app/test_reports/pytest/pytest_results.xml"],
+  "action_items": [
+    "Drop the legacy non-unique 'code' index (db.hydrants.dropIndex('code')) or rename the new one (e.g. 'code_unique') so ensure_indexes can create the unique index; first confirm there are no duplicate codes (currently none)",
+    "Add a duplicate-code check in update_hydrant (find_one({'code': new_code, 'id': {'$ne': hydrant_id}}) -> 400) and catch DuplicateKeyError -> 400 in create/update",
+    "Validate RouteRequest.max_stops with ge=1",
+    "Optional: validate type/status values strictly; use the shadcn date picker; show full status labels"
+  ],
+  "critical_code_review_comments": [
+    "ensure_indexes only logs index failures, so the unique-code guarantee has silently been missing since the schema change",
+    "geocode_pending only resets running in finally. A doc without 'address' raises KeyError in the loop and aborts geocoding of the remaining docs",
+    "Dashboard pollGeocode has no try/catch: if geocode-status fails, polling stops silently and causes an unhandled rejection",
+    "handleClearAll has no try/catch/toast on error"
+  ],
+  "updated_files": ["/app/backend/tests/test_hydrants_api.py"],
+  "success_rate": {"backend": "86% (12/14)", "frontend": "100%"},
+  "seed_data_creation": "None kept. TEST_ hydrants created via API/CSV/UI were all deleted by id; DB is verified back to the 50 real hydrants.",
+  "retest_needed": true,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "DB holds 50 real scraped hydrants, all geocoded; never call DELETE /api/hydrants or clear-all-btn. test_hydrants_api.py runs with xdist (pytest.ini) and the tests only create TEST_ data. The scrape test counts non-TEST hydrants, so a duplicate-code bug in a parallel test can make it fail. Expected failures until fixed: test_update_to_duplicate_code and test_route_invalid_max_stops.",
+  "rca of the issue": "Duplicate codes: the index list declares IndexModel([('code',1)], name='code', unique=True), but an older non-unique index with the same name already exists, so Mongo returns IndexKeySpecsConflict (code 86) on every startup. Repro: PUT /api/hydrants/{TEST_id} {code:'1396'} -> 200, then GET shows two hydrants with code 1396. Fix: drop or rename the old index, and add an application-level check in PUT."
+}

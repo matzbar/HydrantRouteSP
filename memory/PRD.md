@@ -29,6 +29,13 @@ Crie um app onde eu possa enviar uma lista de endereços (nome da rua e número)
 - Toasts (sonner), estados de loading, GPS fallback
 - Nominatim UA tuning para evitar bloqueio 403
 
+## Iteration 2 (2026-06)
+- Schema: código, tipo, endereço, município, última vistoria, situação (possível de uso/inoperante), setor
+- Import from CB SP page (table "HIDRANTES PENDENTES DE VISTORIA - CICLO 2026 2º SEM", 50 rows) via POST /api/hydrants/scrape (idempotent)
+- Geocoding in background: ArcGIS (supports intersections "X & Y") → Photon → Nominatim; status bar + retry
+- Route: user chooses quantity (max_stops); Google Maps links split into chained 10-stop segments
+- Unique code index (code_unique), duplicate checks, strict type/status validation
+
 ## Backlog / Next
 - P1: Reorder manual dos stops (drag & drop) na rota antes de abrir no Google Maps
 - P1: Exportar relatório PDF/CSV da rota gerada com assinatura/data
