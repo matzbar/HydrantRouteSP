@@ -36,6 +36,12 @@ Crie um app onde eu possa enviar uma lista de endereços (nome da rua e número)
 - Route: user chooses quantity (max_stops); Google Maps links split into chained 10-stop segments
 - Unique code index (code_unique), duplicate checks, strict type/status validation
 
+## Iteration 3 (2026-06)
+- Start point picker: route can begin at a chosen hydrant (search by code or address), default GPS
+- "Excluir tudo e reimportar" button in list (POST /api/hydrants/reimport): fetches+validates CB SP table first, then replaces the whole list
+- Persistent geocache collection → re-imports are geocoded instantly
+- New status nao_localizado (appears in source data)
+
 ## Backlog / Next
 - P1: Reorder manual dos stops (drag & drop) na rota antes de abrir no Google Maps
 - P1: Exportar relatório PDF/CSV da rota gerada com assinatura/data

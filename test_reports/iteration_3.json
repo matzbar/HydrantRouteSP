@@ -1,0 +1,37 @@
+{
+  "summary": "Iteration 3: tested start-hydrant route option, reimport endpoint/button, and the 'nao_localizado' status in both backend and frontend. Backend: 11/11 new tests pass, plus 14/14 regression tests after updating one outdated assertion. Reimport returned fetched=50/inserted=50/skipped=0, and geocoding finished immediately (50/50 in 0.1s) because the geocache served every address. Route with start 15214: stop 1 is 15214 at 0 km and the google_maps_url origin is the start hydrant's coordinates. N=6 and N=3 return exactly N stops. max_stops=1 returns only the start hydrant (a Maps search URL). An invalid start id returns 400. Without a start id, the route uses origin_lat/lon. The source's 'NÃO LOCALIZADO' row (code 973) is stored as nao_localizado. Frontend: every requested flow passed (picker default, filtering, select/clear, 6-stop route dialog, reimport cancel/confirm + toast + start reset, N/LOC filter in amber).",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "POST /api/hydrants/reimport", "issue": "delete_many({}) runs BEFORE the CB SP page is fetched/parsed. If the CB SP site is down or the table header changes, scrape raises and the DB is left EMPTY (data loss). Fetch+parse first, then delete and insert (or insert into temp and swap)."},
+      {"endpoint": "geocode_pending (background)", "issue": "If a previous geocode_pending run is still active (GEOCODE_STATE.running) when a reimport happens, the new call returns early; the running task iterates the old (deleted) docs, so the new hydrants stay geocoded=false until a retry. It wasn't triggered here because the cache is warm. Consider looping until no pending docs remain."},
+      {"endpoint": "POST /api/hydrants/scrape", "issue": "If expected column names change, each row's KeyError is only logged, and the response is 200 with inserted=0. Combined with reimport, this silently wipes the list. Validate the headers up front and return 502/500."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Cadastro > Manual", "issues": ["'Última vistoria' uses the native browser date input (mm/dd/yyyy, English format) instead of a shadcn Calendar/date picker in pt-BR format"]},
+      {"screen": "Ações", "issues": ["'Limpar Base' still uses window.confirm, while reimport uses AlertDialog. Make them consistent."]}
+    ]
+  },
+  "test_report_links": ["/app/backend/tests/test_start_and_reimport.py", "/app/backend/tests/test_hydrants_api.py", "/app/test_reports/pytest/pytest_iter3.xml"],
+  "action_items": [
+    "Make reimport safe: scrape+parse first, delete only after a successful parse (avoid an empty DB if CB SP fails)",
+    "Make geocode_pending re-check for pending docs after finishing (race with reimport during a running geocode)",
+    "Optional: replace the native date input with a shadcn date picker; use AlertDialog for Limpar Base"
+  ],
+  "critical_code_review_comments": [
+    "reimport_hydrants: destructive delete before network fetch, so there's a risk of data loss",
+    "scrape: header-mismatch rows fail silently (200 with inserted=0)",
+    "server.py is 680 lines, close to the 700-line limit. Consider splitting geocoding/scraping/routing into modules.",
+    "StartPointPicker lists only geocoded hydrants (correct for routing) but gives no hint that non-geocoded ones are hidden"
+  ],
+  "updated_files": ["/app/backend/tests/test_start_and_reimport.py (new)", "/app/backend/tests/test_hydrants_api.py (status assertion now accepts nao_localizado)"],
+  "success_rate": {"backend": "100%", "frontend": "100%"},
+  "seed_data_creation": "Called POST /api/hydrants/reimport (allowed this round) twice (API + UI); DB ends with the 50 real CB SP hydrants, all geocoded. Temporary TEST_NL1 created and deleted.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Run pytest with -n0 (pytest.ini adds xdist). The new test file calls reimport in its first test. Hydrant 15214 (RUA LUIS ROMANINI) is a good start point; 973 is the single nao_localizado row. GPS is denied in the test env, so the SP center fallback is used."
+}

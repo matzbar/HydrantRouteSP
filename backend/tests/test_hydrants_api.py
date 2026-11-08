@@ -37,7 +37,7 @@ class TestList:
                 assert k in h
             assert "_id" not in h
             assert h["type"] in ("subterraneo", "coluna")
-            assert h["status"] in ("possivel_de_uso", "inoperante")
+            assert h["status"] in ("possivel_de_uso", "inoperante", "nao_localizado")
             if h["last_inspection"]:
                 assert re.fullmatch(r"\d{4}-\d{2}-\d{2}", h["last_inspection"]), h["last_inspection"]
 

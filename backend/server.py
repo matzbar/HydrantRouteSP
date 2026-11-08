@@ -304,11 +304,12 @@ async def geocode_pending() -> None:
         return
     GEOCODE_STATE["running"] = True
     try:
-        docs = await db.hydrants.find({"geocoded": False, "geocode_failed": {"$ne": True}}, {"_id": 0}).to_list(5000)
-        for d in docs:
-            coords = await geocode_address(d.get("address", ""), d.get("municipality") or DEFAULT_MUNICIPALITY)
-            upd = {"lat": coords["lat"], "lon": coords["lon"], "geocoded": True} if coords else {"geocode_failed": True}
-            await db.hydrants.update_one({"id": d["id"]}, {"$set": upd})
+        query = {"geocoded": False, "geocode_failed": {"$ne": True}}
+        while docs := await db.hydrants.find(query, {"_id": 0}).to_list(200):
+            for d in docs:
+                coords = await geocode_address(d.get("address", ""), d.get("municipality") or DEFAULT_MUNICIPALITY)
+                upd = {"lat": coords["lat"], "lon": coords["lon"], "geocoded": True} if coords else {"geocode_failed": True}
+                await db.hydrants.update_one({"id": d["id"]}, {"$set": upd})
     finally:
         GEOCODE_STATE["running"] = False
 
@@ -496,74 +497,84 @@ async def bulk_create_hydrants(file: UploadFile = File(...)):
     return created
 
 
-@api_router.post("/hydrants/scrape", response_model=ScrapeResponse)
-async def scrape_hydrants():
-    """Fetch hydrants from the Corpo de Bombeiros SP page and insert pending-inspection list."""
+REQUIRED_CB_COLUMNS = ["ID", "TIPO", "ENDERECO", "MUNICIPIO", "ULTIMA VISTORIA CB", "SITUACAO", "SETOR"]
+
+
+async def fetch_cb_hydrants() -> List[Hydrant]:
+    """Fetch and parse the CB SP pending-inspection table. Raises 502 on any source problem."""
     headers = {"User-Agent": USER_AGENT, "Accept-Language": "pt-BR,pt;q=0.9"}
-    async with httpx.AsyncClient(timeout=30.0, headers=headers, follow_redirects=True) as hc:
-        r = await hc.get(CB_SCRAPE_URL)
-        r.raise_for_status()
-        html = r.text
+    try:
+        async with httpx.AsyncClient(timeout=30.0, headers=headers, follow_redirects=True) as hc:
+            r = await hc.get(CB_SCRAPE_URL)
+            r.raise_for_status()
+            html = r.text
+    except httpx.HTTPError as exc:
+        raise HTTPException(502, f"Página do CB SP indisponível: {exc}")
 
     soup = BeautifulSoup(html, "lxml")
-    target_h = None
-    for h in soup.find_all(["h1", "h2", "h3", "h4", "h5"]):
-        if "PENDENTES DE VISTORIA" in h.get_text().upper() and "2026" in h.get_text():
-            target_h = h
-            break
-    if not target_h:
-        raise HTTPException(500, "Tabela 'HIDRANTES PENDENTES DE VISTORIA - CICLO 2026 2º SEM' não encontrada")
-
-    table = target_h.find_next("table")
+    target_h = next((h for h in soup.find_all(["h1", "h2", "h3", "h4", "h5"])
+                     if "PENDENTES DE VISTORIA" in h.get_text().upper() and "2026" in h.get_text()), None)
+    table = target_h.find_next("table") if target_h else None
     if not table:
-        raise HTTPException(500, "Tabela não encontrada após o cabeçalho")
+        raise HTTPException(502, f"Tabela '{CB_TABLE_HEADING}' não encontrada na página do CB SP")
 
     headers_th = [th.get_text(strip=True).upper() for th in table.select("thead th")]
+    missing = [c for c in REQUIRED_CB_COLUMNS if c not in headers_th]
+    if missing:
+        raise HTTPException(502, f"Colunas ausentes na tabela do CB SP: {', '.join(missing)}")
     idx = {name: headers_th.index(name) for name in headers_th}
 
-    rows = table.select("tbody tr")
-    fetched = len(rows)
-    inserted = 0
-    skipped = 0
-
-    async def process(cells: List[str]):
-        nonlocal inserted, skipped
+    items: List[Hydrant] = []
+    for row in table.select("tbody tr"):
+        cells = [td.get_text(strip=True) for td in row.find_all("td")]
+        if len(cells) < len(headers_th) or not cells[idx["ID"]].strip():
+            continue
         try:
-            code = cells[idx["ID"]].strip()
-            if not code:
-                return
-            existing = await db.hydrants.find_one({"code": code})
-            if existing:
-                skipped += 1
-                return
-            h = Hydrant(
-                code=code,
+            items.append(Hydrant(
+                code=cells[idx["ID"]].strip(),
                 type=norm_type(cells[idx["TIPO"]]),
                 address=cells[idx["ENDERECO"]].strip(),
                 municipality=cells[idx["MUNICIPIO"]].strip().title() or DEFAULT_MUNICIPALITY,
                 last_inspection=parse_date_str(cells[idx["ULTIMA VISTORIA CB"]]),
                 status=norm_status(cells[idx["SITUACAO"]]),
-                sector=cells[idx["SETOR"]].strip() if "SETOR" in idx else None,
-            )
+                sector=cells[idx["SETOR"]].strip() or None,
+            ))
+        except Exception as exc:
+            logging.getLogger(__name__).warning("CB row skipped: %s", exc)
+    if not items:
+        raise HTTPException(502, "Nenhum hidrante válido encontrado na tabela do CB SP")
+    return items
+
+
+async def insert_hydrants(items: List[Hydrant]) -> tuple[int, int]:
+    inserted = skipped = 0
+    for h in items:
+        try:
             await db.hydrants.insert_one(hydrant_to_doc(h))
             inserted += 1
-        except Exception as exc:
-            logging.getLogger(__name__).warning("scrape row failed: %s", exc)
-
-    for row in rows:
-        cells = [td.get_text(strip=True) for td in row.find_all("td")]
-        if len(cells) >= len(headers_th):
-            await process(cells)
+        except DuplicateKeyError:
+            skipped += 1
     asyncio.create_task(geocode_pending())
-    geocoded_count = await db.hydrants.count_documents({"geocoded": True})
-    return ScrapeResponse(fetched=fetched, inserted=inserted, skipped=skipped, geocoded=geocoded_count)
+    return inserted, skipped
+
+
+@api_router.post("/hydrants/scrape", response_model=ScrapeResponse)
+async def scrape_hydrants():
+    """Import the CB SP pending-inspection list, skipping codes already registered."""
+    items = await fetch_cb_hydrants()
+    inserted, skipped = await insert_hydrants(items)
+    geocoded = await db.hydrants.count_documents({"geocoded": True})
+    return ScrapeResponse(fetched=len(items), inserted=inserted, skipped=skipped, geocoded=geocoded)
 
 
 @api_router.post("/hydrants/reimport", response_model=ScrapeResponse)
 async def reimport_hydrants():
-    """Delete all hydrants and import the current CB SP table again."""
+    """Fetch the CB SP table first; only if it succeeds, delete all hydrants and insert the fresh list."""
+    items = await fetch_cb_hydrants()
     await db.hydrants.delete_many({})
-    return await scrape_hydrants()
+    inserted, skipped = await insert_hydrants(items)
+    geocoded = await db.hydrants.count_documents({"geocoded": True})
+    return ScrapeResponse(fetched=len(items), inserted=inserted, skipped=skipped, geocoded=geocoded)
 
 
 @api_router.get("/hydrants/geocode-status")
