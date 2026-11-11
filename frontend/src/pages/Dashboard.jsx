@@ -393,7 +393,7 @@ export default function Dashboard() {
 
       <footer className="border-t border-[#26334D] py-6 text-center">
         <p className="text-[10px] font-mono-t uppercase tracking-widest text-slate-600">
-          HydrantRoute SP · Dados ao vivo do CB SP · OpenStreetMap · OSRM · Google Maps
+          HydrantRoute SP · Dados ao vivo do CB SP · OpenStreetMap · OSRM · Google Maps · Desenvolvido por CB MANOSSO
         </p>
       </footer>
 
