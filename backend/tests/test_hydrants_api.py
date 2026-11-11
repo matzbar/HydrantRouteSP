@@ -27,11 +27,11 @@ def created_ids():
 
 # --- Listing / schema
 class TestList:
-    def test_list_50_real_hydrants(self, s):
+    def test_list_real_hydrants(self, s):
         r = s.get(f"{BASE_URL}/api/hydrants")
         assert r.status_code == 200
         data = [h for h in r.json() if not h["code"].startswith("TEST_")]
-        assert len(data) == 50
+        assert len(data) > 0  # tabela do CB SP é dinâmica
         for h in data:
             for k in ("code", "type", "address", "municipality", "last_inspection", "status", "sector", "lat", "lon", "geocoded", "id"):
                 assert k in h
@@ -56,11 +56,11 @@ class TestScrape:
         r = s.post(f"{BASE_URL}/api/hydrants/scrape", timeout=90)
         assert r.status_code == 200, r.text
         d = r.json()
-        assert d["fetched"] == 50
+        assert d["fetched"] > 0
         assert d["inserted"] == 0
-        assert d["skipped"] == 50
+        assert d["skipped"] == d["fetched"]
         lst = [h for h in s.get(f"{BASE_URL}/api/hydrants").json() if not h["code"].startswith("TEST_")]
-        assert len(lst) == 50
+        assert len(lst) == d["fetched"]
 
 
 # --- Manual CRUD

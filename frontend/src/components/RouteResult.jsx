@@ -7,7 +7,7 @@ export default function RouteResult({ open, onClose, result }) {
   if (!result) return null;
   return (
     <Dialog open={open} onOpenChange={onClose}>
-      <DialogContent className="bg-[#121824] border-[#26334D] text-slate-100 max-w-2xl" data-testid="route-result-dialog">
+      <DialogContent className="bg-[#121824] border-[#26334D] text-slate-100 max-w-2xl w-[calc(100%-1.5rem)] max-h-[90dvh] overflow-y-auto rounded-lg" data-testid="route-result-dialog">
         <DialogHeader>
           <DialogTitle className="font-display uppercase tracking-wider text-2xl">
             <span className="text-[#38BDF8]">Rota Otimizada</span> · {result.stops.length} paradas

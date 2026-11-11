@@ -165,6 +165,16 @@ class ScrapeResponse(BaseModel):
 NOMINATIM_LOCK = asyncio.Lock()
 GEOCODE_CACHE: dict[str, Optional[dict]] = {}
 GEOCODE_STATE = {"running": False}
+BACKGROUND_TASKS: set = set()
+
+
+def spawn_geocode() -> None:
+    """Start geocode_pending in the background, keeping a strong reference so it isn't GC'd mid-run."""
+    task = asyncio.create_task(geocode_pending())
+    BACKGROUND_TASKS.add(task)
+    task.add_done_callback(BACKGROUND_TASKS.discard)
+
+
 SPLIT_RE = re.compile(
     r"\s+(?:PR[OÓ]X(?:IMO)?\.?\s+(?:DA|DO|A|AO|AOS|DOS|DAS)?\s*(?:ESQUINA\s+(?:COM|DA|DO)\s+)?"
     r"|ESQUINA\s+(?:COM|DA|DO)?\s*|NO\s+FINAL\s+DA\s+|DEFRONTE\s+(?:A|AO|COM)?\s*|E[MN]\s?FRENTE\s+(?:A|AO)?\s*"
@@ -270,7 +280,8 @@ async def geocode_address(address: str, municipality: str) -> Optional[dict]:
         return {"lat": cached["lat"], "lon": cached["lon"]}
     res = await _geocode_remote(address, municipality)
     if res:
-        await db.geocache.update_one({"key": key}, {"$set": {"key": key, "lat": res["lat"], "lon": res["lon"]}}, upsert=True)
+        with suppress(DuplicateKeyError):  # concurrent upsert of the same key
+            await db.geocache.update_one({"key": key}, {"$set": {"key": key, "lat": res["lat"], "lon": res["lon"]}}, upsert=True)
     return res
 
 
@@ -307,7 +318,11 @@ async def geocode_pending() -> None:
         query = {"geocoded": False, "geocode_failed": {"$ne": True}}
         while docs := await db.hydrants.find(query, {"_id": 0}).to_list(200):
             for d in docs:
-                coords = await geocode_address(d.get("address", ""), d.get("municipality") or DEFAULT_MUNICIPALITY)
+                try:
+                    coords = await geocode_address(d.get("address", ""), d.get("municipality") or DEFAULT_MUNICIPALITY)
+                except Exception as exc:
+                    logging.getLogger(__name__).warning("geocode_pending failed for %s: %s", d.get("code"), exc)
+                    coords = None
                 upd = {"lat": coords["lat"], "lon": coords["lon"], "geocoded": True} if coords else {"geocode_failed": True}
                 await db.hydrants.update_one({"id": d["id"]}, {"$set": upd})
     finally:
@@ -493,7 +508,7 @@ async def bulk_create_hydrants(file: UploadFile = File(...)):
             continue
         await db.hydrants.insert_one(hydrant_to_doc(h))
         created.append(h)
-    asyncio.create_task(geocode_pending())
+    spawn_geocode()
     return created
 
 
@@ -549,12 +564,15 @@ async def fetch_cb_hydrants() -> List[Hydrant]:
 async def insert_hydrants(items: List[Hydrant]) -> tuple[int, int]:
     inserted = skipped = 0
     for h in items:
+        if await db.hydrants.find_one({"code": h.code}, {"_id": 1}):
+            skipped += 1
+            continue
         try:
             await db.hydrants.insert_one(hydrant_to_doc(h))
             inserted += 1
         except DuplicateKeyError:
             skipped += 1
-    asyncio.create_task(geocode_pending())
+    spawn_geocode()
     return inserted, skipped
 
 
@@ -589,7 +607,7 @@ async def geocode_status():
 @api_router.post("/hydrants/geocode-retry")
 async def geocode_retry():
     await db.hydrants.update_many({"geocode_failed": True}, {"$unset": {"geocode_failed": ""}})
-    asyncio.create_task(geocode_pending())
+    spawn_geocode()
     return {"ok": True}
 
 
@@ -664,6 +682,13 @@ async def optimize_route(req: RouteRequest):
 
 
 app.include_router(api_router)
+
+# Serve the built React app from the same service when available (Docker image / single-service deploy).
+STATIC_DIR = Path(os.environ.get("STATIC_DIR", ROOT_DIR.parent / "frontend" / "build"))
+if (STATIC_DIR / "index.html").is_file():
+    from fastapi.staticfiles import StaticFiles
+
+    app.mount("/", StaticFiles(directory=STATIC_DIR, html=True), name="frontend")
 
 app.add_middleware(
     CORSMiddleware,

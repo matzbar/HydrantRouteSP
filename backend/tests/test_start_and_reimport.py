@@ -28,29 +28,30 @@ def _by_code(s, code):
 
 # --- Reimport (runs first in this module) ---
 class TestAReimport:
-    def test_reimport_restores_50(self, s):
+    def test_reimport_restores_all(self, s):
         r = s.post(f"{BASE_URL}/api/hydrants/reimport", timeout=120)
         assert r.status_code == 200, r.text
         d = r.json()
-        assert d["fetched"] == 50
-        assert d["inserted"] == 50
+        n = d["fetched"]  # tabela do CB SP é dinâmica
+        assert n > 0
+        assert d["inserted"] == n
         assert d["skipped"] == 0
         t0 = time.time()
         st = None
         while time.time() - t0 < 30:
             st = s.get(f"{BASE_URL}/api/hydrants/geocode-status", timeout=15).json()
-            if st["total"] == 50 and st["geocoded"] == st["total"]:
+            if st["total"] == n and st["geocoded"] == st["total"]:
                 break
             time.sleep(2)
         print("geocode status", st, "elapsed", round(time.time() - t0, 1))
-        assert st["total"] == 50
-        assert st["geocoded"] == 50
+        assert st["total"] == n
+        assert st["geocoded"] == n
         assert time.time() - t0 < 15
 
     def test_list_after_reimport(self, s):
         hs = _hyd(s)
-        assert len(hs) == 50
-        assert len({h["code"] for h in hs}) == 50
+        assert len(hs) > 0
+        assert len({h["code"] for h in hs}) == len(hs)
         assert all(h["status"] in ("possivel_de_uso", "inoperante", "nao_localizado") for h in hs)
         print("status counts", {st: sum(h["status"] == st for h in hs) for st in ("possivel_de_uso", "inoperante", "nao_localizado")})
 

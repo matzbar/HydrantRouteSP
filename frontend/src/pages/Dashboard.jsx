@@ -240,6 +240,12 @@ export default function Dashboard() {
               Atualizar GPS
             </Button>
           </div>
+
+          <Button size="icon" variant="ghost" onClick={requestGps} data-testid="refresh-gps-btn-mobile"
+            aria-label="Atualizar GPS" title={gps ? "GPS ativo · atualizar" : gpsErr || "Obtendo GPS..."}
+            className="md:hidden flex-shrink-0 hover:bg-[#1A2234]">
+            <Satellite className={`w-5 h-5 ${gps ? "text-[#10B981]" : "text-amber-400"}`} />
+          </Button>
         </div>
       </header>
 
@@ -393,7 +399,7 @@ export default function Dashboard() {
         </aside>
 
         <section className="lg:col-span-3 space-y-5">
-          <div className="tactical-card p-3 h-[500px] relative">
+          <div className="tactical-card p-3 h-[400px] sm:h-[500px] relative">
             <div className="absolute top-5 right-5 z-[500] flex items-center gap-2 px-3 py-1.5 rounded-full bg-[#0B0F17]/85 border border-[#26334D] backdrop-blur-md">
               <MapPin className="w-3.5 h-3.5 text-[#EF4444]" />
               <span className="font-mono-t text-[10px] uppercase tracking-widest text-slate-300">
