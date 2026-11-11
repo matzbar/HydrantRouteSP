@@ -85,22 +85,22 @@ export default function RouteResult({ open, onClose, result }) {
             </p>
             <div className="grid grid-cols-2 gap-2">
               {result.google_maps_segments.map((url, i) => (
-                <a key={url} href={url} target="_blank" rel="noopener noreferrer" data-testid={`google-maps-link-${i + 1}`}>
-                  <Button className="w-full btn-tactical-red font-display uppercase tracking-wider text-sm font-bold">
+                <Button key={url} asChild className="w-full btn-tactical-red font-display uppercase tracking-wider text-sm font-bold">
+                  <a href={url} target="_blank" rel="noopener noreferrer" data-testid={`google-maps-link-${i + 1}`}>
                     <ExternalLink className="w-4 h-4 mr-2" />
                     Abrir trecho {i + 1}
-                  </Button>
-                </a>
+                  </a>
+                </Button>
               ))}
             </div>
           </div>
         ) : (
-          <a href={result.google_maps_url} target="_blank" rel="noopener noreferrer" data-testid="google-maps-link" className="w-full">
-            <Button className="w-full btn-tactical-red font-display uppercase tracking-wider text-base font-bold py-6">
+          <Button asChild className="w-full btn-tactical-red font-display uppercase tracking-wider text-base font-bold py-6">
+            <a href={result.google_maps_url} target="_blank" rel="noopener noreferrer" data-testid="google-maps-link">
               <ExternalLink className="w-5 h-5 mr-2" />
               Abrir Rota no Google Maps
-            </Button>
-          </a>
+            </a>
+          </Button>
         )}
       </DialogContent>
     </Dialog>

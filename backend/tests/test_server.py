@@ -122,6 +122,8 @@ def client(monkeypatch):
     monkeypatch.setattr(cb_sp, "fetch_official_coords", no_official)
     cb_sp.INDEX_CACHE.clear()
     cb_sp.STATION_CACHE.clear()
+    server.API_LIMITER.reset()
+    server.ROUTE_LIMITER.reset()
     cb_sp.OFFICIAL_CACHE.clear()
     geocoding.GEOCACHE.mem.clear()
     geocoding.GEO_FAILED.clear()
@@ -331,3 +333,50 @@ def test_official_service_down_falls_back_to_address(client, monkeypatch):
     d = _wait_geocoding(client)
     assert d["geocode"]["official"] == 0
     assert all(h["location_source"] in ("endereco", None) for h in d["hydrants"])
+
+
+# ----------------------------- Limite de requisições -----------------------------
+def test_route_rate_limit(client):
+    body = {**ORIGIN, "points": POINTS[:3]}
+    codes = [client.post("/api/route/optimize", json=body).status_code for _ in range(server.ROUTE_LIMITER.limit + 1)]
+    assert codes[:-1] == [200] * server.ROUTE_LIMITER.limit
+    r = client.post("/api/route/optimize", json=body)
+    assert r.status_code == 429 and "Aguarde" in r.json()["detail"] and int(r.headers["Retry-After"]) >= 1
+    assert client.get("/api/").status_code == 200  # o limite da rota não bloqueia o resto da API
+
+
+def test_rate_limiter_window():
+    from ratelimit import RateLimiter
+
+    lim = RateLimiter(2, window_s=0.05)
+    assert lim.hit("ip") is None and lim.hit("ip") is None
+    assert lim.hit("ip") > 0 and lim.hit("outro-ip") is None
+    import time
+    time.sleep(0.06)
+    assert lim.hit("ip") is None
+
+
+def test_osrm_errors_do_not_log_coordinates(caplog):
+    import asyncio
+
+    import httpx
+
+    def handler(request):
+        return httpx.Response(502, request=request)
+
+    real_client = httpx.AsyncClient
+
+    class MockClient(real_client):
+        def __init__(self, *a, **kw):
+            kw["transport"] = httpx.MockTransport(handler)
+            super().__init__(*a, **kw)
+
+    httpx.AsyncClient = MockClient
+    try:
+        with caplog.at_level("INFO"):
+            assert asyncio.run(osrm.osrm_table([(-23.5612, -46.6558), (-23.6, -46.5)])) is None
+            assert asyncio.run(osrm.osrm_route([(-23.5612, -46.6558), (-23.6, -46.5)])) is None
+    finally:
+        httpx.AsyncClient = real_client
+    assert "HTTP 502" in caplog.text
+    assert "-23.5612" not in caplog.text and "-46.6558" not in caplog.text

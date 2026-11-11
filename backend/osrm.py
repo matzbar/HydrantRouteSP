@@ -7,6 +7,13 @@ from config import OSRM_TABLE_MAX, OSRM_TABLE_URL, OSRM_URL, USER_AGENT, logger
 from routing import estimated_matrices
 
 
+def _describe(exc: Exception) -> str:
+    """Erro sem a URL: ela contém as coordenadas, inclusive a localização do usuário."""
+    if isinstance(exc, httpx.HTTPStatusError):
+        return f"HTTP {exc.response.status_code}"
+    return type(exc).__name__
+
+
 def _coord_str(coords: List[Tuple[float, float]]) -> str:
     return ";".join(f"{lon},{lat}" for lat, lon in coords)
 
@@ -21,7 +28,7 @@ async def osrm_table(coords: List[Tuple[float, float]]) -> Optional[Tuple[List[L
             r.raise_for_status()
             data = r.json()
     except Exception as exc:
-        logger.warning("osrm table failed: %s", exc)
+        logger.warning("osrm table failed: %s", _describe(exc))
         return None
     dur, dist = data.get("durations"), data.get("distances")
     n = len(coords)
@@ -45,5 +52,5 @@ async def osrm_route(coords: List[Tuple[float, float]]) -> Optional[dict]:
             r.raise_for_status()
             return r.json()
     except Exception as exc:
-        logger.warning("osrm failed: %s", exc)
+        logger.warning("osrm failed: %s", _describe(exc))
     return None

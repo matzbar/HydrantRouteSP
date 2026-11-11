@@ -18,6 +18,7 @@ backend/
   geocoding.py   localização pelo endereço, com cache (memória + MongoDB opcional)
   osrm.py        tempos e distâncias de carro (OSRM)
   routing.py     otimização da ordem das paradas e links do Google Maps
+  ratelimit.py   limite de requisições por IP
   config.py      endereços dos serviços e limites
   tests/         testes unitários (sem rede nem banco)
 frontend/        React (CRA + craco) + Leaflet + Tailwind
@@ -35,6 +36,10 @@ Todas opcionais. Modelo em [`backend/.env.example`](backend/.env.example).
 | `DB_NAME`      | `hydrantroute` | Nome do banco no MongoDB |
 | `PORT`         | `8000`         | Definida automaticamente pelo Render/Railway |
 | `CORS_ORIGINS` | `*`            | Só se o frontend ficar em outro domínio |
+| `OSRM_BASE_URL` | servidor público do OSRM | Para usar um OSRM próprio ou comercial (o público é para uso leve) |
+| `OSRM_TABLE_MAX` | `100`         | Máximo de pontos por matriz aceito pelo seu OSRM |
+| `RATE_LIMIT_PER_MIN` | `120`     | Requisições por minuto por IP na API |
+| `ROUTE_RATE_LIMIT_PER_MIN` | `20` | Cálculos de rota por minuto por IP |
 
 ## Rodar com Docker (local ou VPS)
 
@@ -84,3 +89,11 @@ pytest
 ```
 
 As dependências têm versões fixas (`requirements.txt` e `frontend/yarn.lock`). Ao atualizar, rode `pytest` e `pip-audit -r requirements.txt`.
+
+O GitHub Actions ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)) roda os testes, o `pip-audit` e o build do frontend em todo pull request.
+
+## Privacidade e serviços externos
+
+- A localização do usuário (GPS) só sai do navegador ao gerar a rota: vai ao OSRM e ao link do Google Maps. O app não a grava nem a registra em log.
+- Resultados do geocodificador ArcGIS World ficam só na memória (os termos dele não permitem guardá-los sem conta paga). Os do Photon/Nominatim (OpenStreetMap) podem ir para o MongoDB.
+- As requisições se identificam com o User-Agent `HydrantRouteSP/1.0 (+https://github.com/matzbar/HydrantRouteSP)`, como pede a política do Nominatim.
