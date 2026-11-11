@@ -357,7 +357,7 @@ export default function Dashboard() {
               Gerar Rota Otimizada
             </Button>
             <p className="text-[11px] text-slate-500 leading-relaxed">
-              A rota sempre parte da sua localização (GPS). Se você escolher uma primeira parada, ela é a parada 1 e as demais seguem pelo hidrante mais próximo a partir dela; senão, a parada 1 é o hidrante mais próximo de você.
+              A rota sempre parte da sua localização (GPS) e a ordem das paradas é otimizada pelo tempo real de carro entre os hidrantes (OSRM). Se você escolher uma primeira parada, ela fica fixa como parada 1.
             </p>
           </div>
         </aside>

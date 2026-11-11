@@ -1,7 +1,7 @@
 import React from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "./ui/dialog";
 import { Button } from "./ui/button";
-import { ExternalLink, Clock, Route, AlertTriangle } from "lucide-react";
+import { ExternalLink, Clock, Route, AlertTriangle, Sparkles } from "lucide-react";
 import { statusColor } from "./HydrantTable";
 
 export default function RouteResult({ open, onClose, result }) {
@@ -33,6 +33,8 @@ export default function RouteResult({ open, onClose, result }) {
             </div>
           </div>
         </div>
+
+        {result.optimization && <OptimizationNote opt={result.optimization} />}
 
         {result.unreachable?.length > 0 && (
           <div className="flex items-start gap-2 bg-amber-500/10 border border-amber-500/30 rounded-lg p-3 text-amber-200 text-xs">
@@ -102,5 +104,30 @@ export default function RouteResult({ open, onClose, result }) {
         )}
       </DialogContent>
     </Dialog>
+  );
+}
+
+function OptimizationNote({ opt }) {
+  const real = opt.source === "osrm";
+  const fmt = (v) => v.toLocaleString("pt-BR", { maximumFractionDigits: 1 });
+  return (
+    <div
+      className="flex items-start gap-2 rounded-lg border border-[#38BDF8]/30 bg-[#38BDF8]/10 p-3 text-xs text-sky-100"
+      data-testid="route-optimization"
+    >
+      <Sparkles className="w-4 h-4 mt-0.5 flex-shrink-0 text-[#38BDF8]" />
+      <div className="space-y-0.5">
+        <div className="font-semibold">
+          {opt.saved_min >= 0.5
+            ? `Ordem otimizada: ${fmt(opt.saved_min)} min a menos que visitar sempre o mais próximo`
+            : "A ordem por proximidade já era a melhor encontrada"}
+        </div>
+        <div className="text-sky-200/80">
+          {real
+            ? `Calculada com tempos reais de carro entre ${opt.candidates} hidrantes (OSRM).`
+            : "OSRM indisponível: ordem calculada com tempos estimados pela distância."}
+        </div>
+      </div>
+    </div>
   );
 }

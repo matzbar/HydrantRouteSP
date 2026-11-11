@@ -130,6 +130,9 @@ export default function HydrantTable({ hydrants, emptyMessage = "Nenhum hidrante
                         {h.code}
                       </a>
                     ) : h.code}
+                    {h.location_source === "endereco" && (
+                      <span className="ml-1 text-amber-300/80" title="Posição aproximada pelo endereço">≈</span>
+                    )}
                     {!h.geocoded && (
                       <AlertTriangle className="w-3 h-3 inline ml-1 text-amber-400" aria-label="Fora do mapa" />
                     )}
@@ -174,6 +177,9 @@ export default function HydrantTable({ hydrants, emptyMessage = "Nenhum hidrante
       </div>
       <p className="text-xs text-slate-500 font-mono-t">
         {filtered.length} de {hydrants.length} hidrantes
+        {hydrants.some((h) => h.location_source === "endereco") && (
+          <span className="ml-3 text-slate-600">≈ posição aproximada pelo endereço (sem posição no mapa oficial)</span>
+        )}
       </p>
     </div>
   );

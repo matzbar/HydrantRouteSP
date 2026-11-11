@@ -74,12 +74,6 @@ def test_norm_type(raw, expected):
 
 
 # ----------------------------- Routing helpers -----------------------------
-def test_nearest_neighbor_order_and_limit():
-    pts = [(0.0, 3.0), (0.0, 1.0), (0.0, 2.0)]
-    assert server.nearest_neighbor_order((0.0, 0.0), pts) == [1, 2, 0]
-    assert server.nearest_neighbor_order((0.0, 0.0), pts, limit=2) == [1, 2]
-
-
 def test_google_maps_url():
     url = server.build_google_maps_url((1.0, 2.0), [(3.0, 4.0), (5.0, 6.0)])
     assert "origin=1.0%2C2.0" in url and "destination=5.0%2C6.0" in url and "waypoints=3.0%2C4.0" in url
@@ -110,12 +104,21 @@ def client(monkeypatch):
     async def no_osrm(coords):
         return None
 
+    async def no_table(coords):
+        return None
+
+    async def no_official(codes):
+        return {}
+
     monkeypatch.delenv("MONGO_URL", raising=False)
     monkeypatch.setattr(server, "fetch_html", fake_fetch)
     monkeypatch.setattr(server, "geocode_remote", fake_geocode)
     monkeypatch.setattr(server, "osrm_route", no_osrm)
+    monkeypatch.setattr(server, "osrm_table", no_table)
+    monkeypatch.setattr(server, "fetch_official_coords", no_official)
     server.INDEX_CACHE.clear()
     server.STATION_CACHE.clear()
+    server.OFFICIAL_CACHE.clear()
     server.GEOCACHE.mem.clear()
     server.GEO_FAILED.clear()
     server.GEO_INFLIGHT.clear()
@@ -229,3 +232,98 @@ def test_route_unknown_start(client):
 def test_removed_write_endpoints(client):
     assert client.delete("/api/hydrants").status_code in (404, 405)
     assert client.post("/api/hydrants/reimport").status_code in (404, 405)
+
+
+def test_route_reports_optimization(client):
+    d = client.post("/api/route/optimize", json={**ORIGIN, "points": POINTS, "max_stops": 5}).json()
+    opt = d["optimization"]
+    assert opt["source"] == "estimativa" and opt["candidates"] == 25
+    assert opt["optimized_min"] <= opt["nearest_neighbor_min"]
+
+
+def test_route_uses_osrm_matrix_and_beats_nearest_neighbor(client, monkeypatch):
+    """Matriz em que o vizinho mais próximo erra.
+
+    "a" é o mais perto da origem, mas fica longe de "b" e "c". O vizinho mais próximo faz
+    origem→a→b→c = 1 + 11 + 1 = 13. Como c→a é curto, o ótimo é origem→b→c→a = 2 + 1 + 2 = 5.
+    """
+    dur = [
+        [0, 1, 2, 3],
+        [1, 0, 11, 11],
+        [2, 11, 0, 1],
+        [3, 2, 1, 0],
+    ]
+    dist = [[v * 100 for v in row] for row in dur]
+    pts = [{"id": "a", "lat": -23.50, "lon": -46.60}, {"id": "b", "lat": -23.51, "lon": -46.60},
+           {"id": "c", "lat": -23.52, "lon": -46.60}]
+
+    async def fake_table(coords):
+        assert len(coords) == 4
+        return [r[:] for r in dur], [r[:] for r in dist]
+
+    monkeypatch.setattr(server, "osrm_table", fake_table)
+    d = client.post("/api/route/optimize", json={**ORIGIN, "points": pts}).json()
+    assert [s["id"] for s in d["stops"]] == ["b", "c", "a"]
+    assert d["optimization"]["source"] == "osrm"
+    assert d["optimization"]["nearest_neighbor_min"] == round(13 / 60, 1)
+    assert d["total_duration_min"] == round(5 / 60, 1)
+    assert [s["distance_from_prev_km"] for s in d["stops"]] == [0.2, 0.1, 0.2]
+
+
+def test_route_preselects_candidates_when_many_points(client, monkeypatch):
+    seen = {}
+
+    async def fake_table(coords):
+        seen["n"] = len(coords)
+        return None
+
+    monkeypatch.setattr(server, "osrm_table", fake_table)
+    many = [{"id": str(i), "lat": -23.5 - i / 1000, "lon": -46.6} for i in range(150)]
+    d = client.post("/api/route/optimize", json={**ORIGIN, "points": many, "max_stops": 10}).json()
+    assert seen["n"] == server.OSRM_TABLE_MAX
+    assert d["optimization"]["candidates"] == server.OSRM_TABLE_MAX - 1
+    assert len(d["stops"]) == 10
+
+
+# ----------------------------- Posição oficial (ArcGIS do CB SP) -----------------------------
+def test_parse_official_features():
+    data = {"features": [
+        {"attributes": {"ID": 973.0}, "geometry": {"x": -46.523992, "y": -23.588755}},
+        {"attributes": {"ID": 1}, "geometry": {"x": 0, "y": 0}},  # fora de SP: descartado
+        {"attributes": {"ID": None}, "geometry": {"x": -46.5, "y": -23.5}},  # sem ID: descartado
+        {"attributes": {"ID": 2}, "geometry": None},  # sem geometria: descartado
+    ]}
+    assert server.parse_official_features(data) == {"973": {"lat": -23.588755, "lon": -46.523992}}
+    with pytest.raises(ValueError):
+        server.parse_official_features({"error": {"code": 400}})
+
+
+def test_official_position_wins_and_skips_geocoding(client, monkeypatch):
+    geocoded = []
+
+    async def official(codes):
+        return {c: {"lat": -23.6, "lon": -46.5} for c in codes if c != "15214"}
+
+    async def tracking_geocode(address, municipality):
+        geocoded.append(address)
+        return {"lat": -23.55, "lon": -46.55}
+
+    monkeypatch.setattr(server, "fetch_official_coords", official)
+    monkeypatch.setattr(server, "geocode_remote", tracking_geocode)
+    d = _wait_geocoding(client)
+    by_code = {h["code"]: h for h in d["hydrants"]}
+    assert d["geocode"]["official"] == 35 and d["geocode"]["geocoded"] == 36
+    others = [h for c, h in by_code.items() if c != "15214"]
+    assert all(h["location_source"] == "oficial" and h["lat"] == -23.6 for h in others)
+    assert by_code["15214"]["location_source"] == "endereco"
+    assert len(geocoded) == 1  # só o hidrante sem posição oficial passa pela geocodificação
+
+
+def test_official_service_down_falls_back_to_address(client, monkeypatch):
+    async def broken(codes):
+        raise RuntimeError("ArcGIS fora do ar")
+
+    monkeypatch.setattr(server, "fetch_official_coords", broken)
+    d = _wait_geocoding(client)
+    assert d["geocode"]["official"] == 0
+    assert all(h["location_source"] in ("endereco", None) for h in d["hydrants"])

@@ -93,6 +93,9 @@ export default function HydrantMap({ hydrants, gps, routeOrder, routePolyline, f
                   <div style={{ marginTop: 2, fontSize: 11, color: "#94A3B8" }}>
                     {h.municipality} · Setor {h.sector || "—"}{h.flow ? ` · Vazão ${h.flow}` : ""}
                   </div>
+                  <div style={{ marginTop: 4, fontSize: 11, color: h.location_source === "oficial" ? "#10B981" : "#F59E0B" }}>
+                    {h.location_source === "oficial" ? "Posição oficial (mapa do CB SP)" : "Posição aproximada pelo endereço"}
+                  </div>
                 </div>
               </Popup>
             </Marker>

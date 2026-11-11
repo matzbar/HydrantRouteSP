@@ -7,7 +7,6 @@ persistido (opcionalmente, no MongoDB) é o cache de coordenadas dos endereços 
 import asyncio
 import difflib
 import logging
-import math
 import os
 import re
 import time
@@ -24,6 +23,8 @@ from fastapi import APIRouter, FastAPI, HTTPException, Path as PathParam
 from pydantic import BaseModel, Field
 from starlette.middleware.cors import CORSMiddleware
 
+from routing import estimated_matrices, haversine_km, nearest_neighbor, optimize_open_path, path_cost
+
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / ".env")
 
@@ -32,15 +33,23 @@ logger = logging.getLogger("hydrantroute")
 
 DEFAULT_STATE = "SP"
 CB_INDEX_URL = "https://cbaplang.corpodebombeiros.sp.gov.br/hidrantes/07estacao/"
+# Camada pública de hidrantes do mapa oficial do CB SP (ArcGIS "CBPMESP OPERACIONAL"): posição oficial por ID.
+CB_HYDRANTS_LAYER_URL = ("https://services8.arcgis.com/8fjb2AtW3vRitLCB/arcgis/rest/services/"
+                         "cbpmesp_hidrantes/FeatureServer/0/query")
 NOMINATIM_URL = "https://nominatim.openstreetmap.org/search"
 PHOTON_URL = "https://photon.komoot.io/api/"
 ARCGIS_URL = "https://geocode.arcgis.com/arcgis/rest/services/World/GeocodeServer/findAddressCandidates"
 OSRM_URL = "https://router.project-osrm.org/route/v1/driving"
+OSRM_TABLE_URL = "https://router.project-osrm.org/table/v1/driving"
+OSRM_TABLE_MAX = 100  # limite de coordenadas por matriz no servidor público do OSRM
 USER_AGENT = "Mozilla/5.0 (compatible; HydrantRouteBR/1.0)"
 
 STATION_CODE_PATTERN = r"^\d{9}$"
 INDEX_TTL_S = 60 * 60  # o índice de estações muda pouco
 STATION_TTL_S = 5 * 60  # página de uma estação: evita bater no site do CB a cada consulta da tela
+OFFICIAL_TTL_S = 60 * 60  # posição oficial dos hidrantes muda raramente
+OFFICIAL_CHUNK = 500  # IDs por consulta ao ArcGIS
+SP_BOUNDS = (-25.6, -19.5, -53.4, -44.0)  # lat mín/máx, lon mín/máx do estado de SP (descarta pontos inválidos)
 MAX_ROUTE_POINTS = 500
 
 
@@ -227,6 +236,7 @@ class TTLCache:
 
 INDEX_CACHE = TTLCache(INDEX_TTL_S)
 STATION_CACHE = TTLCache(STATION_TTL_S)
+OFFICIAL_CACHE = TTLCache(OFFICIAL_TTL_S)
 
 
 async def get_stations() -> List[dict]:
@@ -451,55 +461,114 @@ class GeocodeWorker:
 GEOCODER = GeocodeWorker()
 
 
-async def attach_coords(hydrants: List[dict]) -> Tuple[List[dict], dict]:
-    """Junta as coordenadas do cache e enfileira o que ainda não foi geocodificado."""
-    out, counts = [], {"total": len(hydrants), "geocoded": 0, "pending": 0, "failed": 0}
+# ----------------------------- Posição oficial (mapa do CB SP) -----------------------------
+def parse_official_features(data: dict) -> Dict[str, dict]:
+    """{código: {lat, lon}} a partir da resposta de query da camada de hidrantes do ArcGIS."""
+    if "error" in data:
+        raise ValueError(f"ArcGIS: {data['error']}")
+    out: Dict[str, dict] = {}
+    lat_min, lat_max, lon_min, lon_max = SP_BOUNDS
+    for f in data.get("features", []):
+        attrs, geom = f.get("attributes") or {}, f.get("geometry") or {}
+        try:
+            code = str(int(attrs["ID"]))
+            lat, lon = float(geom["y"]), float(geom["x"])
+        except (KeyError, TypeError, ValueError):
+            continue
+        if lat_min <= lat <= lat_max and lon_min <= lon <= lon_max:
+            out[code] = {"lat": lat, "lon": lon}
+    return out
+
+
+async def fetch_official_coords(codes: List[str]) -> Dict[str, dict]:
+    ids = sorted({str(int(c)) for c in codes if c.isdigit()})
+    out: Dict[str, dict] = {}
+    async with httpx.AsyncClient(timeout=30.0, headers={"User-Agent": USER_AGENT}) as hc:
+        for i in range(0, len(ids), OFFICIAL_CHUNK):
+            chunk = ids[i:i + OFFICIAL_CHUNK]
+            r = await hc.post(CB_HYDRANTS_LAYER_URL, data={
+                "where": f"ID IN ({','.join(chunk)})", "outFields": "ID", "returnGeometry": "true",
+                "outSR": "4326", "f": "json",
+            })
+            r.raise_for_status()
+            out.update(parse_official_features(r.json()))
+    return out
+
+
+async def get_official_coords(station_code: str, codes: List[str]) -> Dict[str, dict]:
+    """Posições oficiais da estação (cache de 1 h). Se o ArcGIS falhar, devolve {} e o app usa o endereço."""
+    if not codes:
+        return {}
+    key = f"{station_code}:{hash(tuple(sorted(codes)))}"
+    try:
+        return await OFFICIAL_CACHE.get_or_load(key, lambda: fetch_official_coords(codes))
+    except Exception as exc:
+        logger.warning("posição oficial indisponível para %s: %s", station_code, exc)
+        return {}
+
+
+async def attach_coords(hydrants: List[dict], official: Optional[Dict[str, dict]] = None) -> Tuple[List[dict], dict]:
+    """Usa a posição oficial do CB SP; sem ela, o cache de endereços; e enfileira o que ainda falta."""
+    official = official or {}
+    out = []
+    counts = {"total": len(hydrants), "geocoded": 0, "pending": 0, "failed": 0, "official": 0}
     for h in hydrants:
-        key = geo_key(h["address"], h["municipality"])
-        coords = await GEOCACHE.get(key)
-        if coords:
-            state = "ok"
-        elif key in GEO_FAILED:
-            state = "failed"
-        else:
-            state = "pending"
-            GEOCODER.enqueue(key, h["address"], h["municipality"])
+        coords = official.get(h["code"])
+        source = "oficial" if coords else None
+        state = "ok" if coords else None
+        if not coords:
+            key = geo_key(h["address"], h["municipality"])
+            coords = await GEOCACHE.get(key)
+            if coords:
+                state, source = "ok", "endereco"
+            elif key in GEO_FAILED:
+                state = "failed"
+            else:
+                state = "pending"
+                GEOCODER.enqueue(key, h["address"], h["municipality"])
         counts["geocoded" if state == "ok" else state] += 1
+        counts["official"] += source == "oficial"
         out.append({**h, "lat": coords["lat"] if coords else None, "lon": coords["lon"] if coords else None,
-                    "geocoded": bool(coords), "geocode_state": state})
+                    "geocoded": bool(coords), "geocode_state": state, "location_source": source})
     return out, counts
 
 
 # ----------------------------- Routing -----------------------------
-def haversine_km(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
-    r = 6371.0
-    p1, p2 = math.radians(lat1), math.radians(lat2)
-    dp = math.radians(lat2 - lat1)
-    dl = math.radians(lon2 - lon1)
-    a = math.sin(dp / 2) ** 2 + math.cos(p1) * math.cos(p2) * math.sin(dl / 2) ** 2
-    return 2 * r * math.asin(math.sqrt(a))
+def _coord_str(coords: List[Tuple[float, float]]) -> str:
+    return ";".join(f"{lon},{lat}" for lat, lon in coords)
 
 
-def nearest_neighbor_order(origin: Tuple[float, float], points: List[Tuple[float, float]],
-                           limit: Optional[int] = None) -> List[int]:
-    remaining = list(range(len(points)))
-    order: List[int] = []
-    curr = origin
-    while remaining and (limit is None or len(order) < limit):
-        best = min(remaining, key=lambda i: haversine_km(curr[0], curr[1], points[i][0], points[i][1]))
-        order.append(best)
-        curr = points[best]
-        remaining.remove(best)
-    return order
+async def osrm_table(coords: List[Tuple[float, float]]) -> Optional[Tuple[List[List[float]], List[List[float]]]]:
+    """Matriz de tempos (s) e distâncias (m) de carro entre todos os pontos, pelo OSRM."""
+    if len(coords) < 2 or len(coords) > OSRM_TABLE_MAX:
+        return None
+    try:
+        async with httpx.AsyncClient(timeout=30.0, headers={"User-Agent": USER_AGENT}) as hc:
+            r = await hc.get(f"{OSRM_TABLE_URL}/{_coord_str(coords)}", params={"annotations": "duration,distance"})
+            r.raise_for_status()
+            data = r.json()
+    except Exception as exc:
+        logger.warning("osrm table failed: %s", exc)
+        return None
+    dur, dist = data.get("durations"), data.get("distances")
+    n = len(coords)
+    if data.get("code") != "Ok" or not dur or not dist or len(dur) != n or any(len(row) != n for row in dur + dist):
+        return None
+    # Pares sem rota (None): usa a estimativa, com penalidade, para o otimizador evitar esse trecho.
+    est_dur, est_dist = estimated_matrices(coords)
+    for i in range(n):
+        for j in range(n):
+            if dur[i][j] is None or dist[i][j] is None:
+                dur[i][j], dist[i][j] = est_dur[i][j] * 2, est_dist[i][j] * 2
+    return dur, dist
 
 
 async def osrm_route(coords: List[Tuple[float, float]]) -> Optional[dict]:
     if len(coords) < 2:
         return None
-    coord_str = ";".join(f"{lon},{lat}" for lat, lon in coords)
     try:
-        async with httpx.AsyncClient(timeout=30.0) as hc:
-            r = await hc.get(f"{OSRM_URL}/{coord_str}", params={"overview": "false", "steps": "false"})
+        async with httpx.AsyncClient(timeout=30.0, headers={"User-Agent": USER_AGENT}) as hc:
+            r = await hc.get(f"{OSRM_URL}/{_coord_str(coords)}", params={"overview": "false", "steps": "false"})
             r.raise_for_status()
             return r.json()
     except Exception as exc:
@@ -539,12 +608,21 @@ class RouteStop(BaseModel):
     duration_from_prev_min: float
 
 
+class RouteOptimization(BaseModel):
+    source: str = Field(..., description="osrm (tempos reais de carro) | estimativa (linha reta × fator de ruas)")
+    candidates: int
+    nearest_neighbor_min: float
+    optimized_min: float
+    saved_min: float
+
+
 class RouteResponse(BaseModel):
     total_distance_km: float
     total_duration_min: float
     stops: List[RouteStop]
     google_maps_url: str
     google_maps_segments: List[str] = []
+    optimization: Optional[RouteOptimization] = None
 
 
 # ----------------------------- App & routes -----------------------------
@@ -583,7 +661,8 @@ async def station_hydrants(code: str = PathParam(..., pattern=STATION_CODE_PATTE
     station = {"code": code}
     with suppress(HTTPException):  # o índice só enriquece a resposta; a página da estação basta
         station = next((s for s in await get_stations() if s["code"] == code), station)
-    hydrants, counts = await attach_coords(page["hydrants"])
+    official = await get_official_coords(code, [h["code"] for h in page["hydrants"]])
+    hydrants, counts = await attach_coords(page["hydrants"], official)
     return {
         "station": {**station, "url": urljoin(CB_INDEX_URL, f"{code}.html")},
         "cycle": page["cycle"],
@@ -597,46 +676,62 @@ async def station_geocode_retry(code: str = PathParam(..., pattern=STATION_CODE_
     page = await get_station_page(code)
     for h in page["hydrants"]:
         GEO_FAILED.discard(geo_key(h["address"], h["municipality"]))
-    _, counts = await attach_coords(page["hydrants"])
+    official = await get_official_coords(code, [h["code"] for h in page["hydrants"]])
+    _, counts = await attach_coords(page["hydrants"], official)
     return {"ok": True, "geocode": counts}
 
 
 @api_router.post("/route/optimize", response_model=RouteResponse)
 async def optimize_route(req: RouteRequest):
     points = list({p.id: p for p in req.points}.values())  # ignora ids repetidos
-    # A partida é sempre a localização do usuário (GPS). Se um hidrante foi escolhido, ele é a 1ª parada
-    # e as demais seguem por vizinho mais próximo a partir dele.
+    # A partida é sempre a localização do usuário (GPS). Se um hidrante foi escolhido, ele é a 1ª parada fixa.
     origin = (req.origin_lat, req.origin_lon)
+    start = None
     if req.start_id:
         start = next((p for p in points if p.id == req.start_id), None)
         if not start:
             raise HTTPException(400, "Hidrante escolhido como primeira parada não encontrado ou sem coordenadas")
-        others = [p for p in points if p.id != start.id]
-        limit = req.max_stops - 1 if req.max_stops else None
-        order = nearest_neighbor_order((start.lat, start.lon), [(p.lat, p.lon) for p in others], limit=limit)
-        ordered = [start] + [others[i] for i in order]
-    else:
-        order = nearest_neighbor_order(origin, [(p.lat, p.lon) for p in points], limit=req.max_stops)
-        ordered = [points[i] for i in order]
-    ordered_coords = [(p.lat, p.lon) for p in ordered]
-    route_coords = [origin] + ordered_coords
+    n_select = min(req.max_stops or len(points), len(points))
 
-    osrm = await osrm_route(route_coords)
-    legs_km: List[float] = []
-    legs_min: List[float] = []
-    if osrm and osrm.get("code") == "Ok" and osrm.get("routes"):
-        for leg in osrm["routes"][0].get("legs", []):
-            legs_km.append(leg.get("distance", 0) / 1000.0)
-            legs_min.append(leg.get("duration", 0) / 60.0)
-    if len(legs_km) != len(route_coords) - 1:  # OSRM indisponível: linha reta a 40 km/h
-        legs_km = [haversine_km(*route_coords[i], *route_coords[i + 1]) for i in range(len(route_coords) - 1)]
-        legs_min = [d / 40.0 * 60.0 for d in legs_km]
+    # A matriz do OSRM aceita até 100 coordenadas (origem + 99 hidrantes). Com mais hidrantes do que isso,
+    # e se a rota pedida couber, usa os mais próximos da partida como candidatos.
+    budget = OSRM_TABLE_MAX - 1
+    candidates = points
+    if len(points) > budget and n_select <= budget:
+        anchor = (start.lat, start.lon) if start else origin
+        others = sorted((p for p in points if p is not start), key=lambda p: haversine_km(*anchor, p.lat, p.lon))
+        candidates = ([start] if start else []) + others[:budget - (1 if start else 0)]
+    coords = [origin] + [(p.lat, p.lon) for p in candidates]
+
+    matrix = await osrm_table(coords)
+    source = "osrm" if matrix else "estimativa"
+    dur, dist = matrix or estimated_matrices(coords)
+    fixed = candidates.index(start) + 1 if start else None
+
+    baseline = nearest_neighbor(dur, range(1, len(coords)), n_select, fixed)
+    order = await asyncio.to_thread(optimize_open_path, dur, n_select, fixed, 2.0)
+    ordered = [candidates[i - 1] for i in order]
+    ordered_coords = [(p.lat, p.lon) for p in ordered]
+
+    full = [0, *order]
+    legs_km = [dist[full[i]][full[i + 1]] / 1000.0 for i in range(len(order))]
+    legs_min = [dur[full[i]][full[i + 1]] / 60.0 for i in range(len(order))]
+    if source == "estimativa":  # sem matriz real: tenta ao menos os trechos reais da rota escolhida
+        osrm = await osrm_route([origin] + ordered_coords)
+        legs = (osrm or {}).get("routes", [{}])[0].get("legs", []) if (osrm or {}).get("code") == "Ok" else []
+        if len(legs) == len(order):
+            legs_km = [leg.get("distance", 0) / 1000.0 for leg in legs]
+            legs_min = [leg.get("duration", 0) / 60.0 for leg in legs]
 
     stops = [
         RouteStop(order=i + 1, id=p.id, distance_from_prev_km=round(legs_km[i], 2),
                   duration_from_prev_min=round(legs_min[i], 1))
         for i, p in enumerate(ordered)
     ]
+    nn_min, opt_min = path_cost(dur, baseline) / 60.0, path_cost(dur, order) / 60.0
+    optimization = RouteOptimization(source=source, candidates=len(candidates),
+                                     nearest_neighbor_min=round(nn_min, 1), optimized_min=round(opt_min, 1),
+                                     saved_min=round(max(0.0, nn_min - opt_min), 1))
 
     # O Google Maps aceita ~9 pontos intermediários por link: trechos encadeados de 10 paradas.
     segments, seg_origin = [], origin
@@ -651,6 +746,7 @@ async def optimize_route(req: RouteRequest):
         stops=stops,
         google_maps_url=gmaps_url,
         google_maps_segments=segments,
+        optimization=optimization,
     )
 
 
