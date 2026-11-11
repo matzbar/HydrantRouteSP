@@ -1,74 +1,103 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "../components/ui/tabs";
 import { Button } from "../components/ui/button";
 import { Slider } from "../components/ui/slider";
 import { Input } from "../components/ui/input";
 import { Toaster, toast } from "sonner";
-import { Flame, MapPin, Navigation, DownloadCloud, Trash2, Loader2, Satellite } from "lucide-react";
+import { Flame, MapPin, Navigation, Loader2, Satellite, ExternalLink, RefreshCw } from "lucide-react";
 import HydrantMap from "../components/HydrantMap";
-import HydrantForm from "../components/HydrantForm";
-import CsvUpload from "../components/CsvUpload";
 import HydrantTable from "../components/HydrantTable";
 import RouteResult from "../components/RouteResult";
 import StartPointPicker from "../components/StartPointPicker";
-import { RefreshCw } from "lucide-react";
-import {
-  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription,
-  AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger,
-} from "../components/ui/alert-dialog";
-import {
-  listHydrants,
-  createHydrant,
-  deleteHydrant,
-  deleteAllHydrants,
-  bulkUpload,
-  scrapeHydrants,
-  reimportHydrants,
-  optimizeRoute,
-  geocodeStatus,
-  geocodeRetry,
-} from "../lib/api";
+import StationPicker, { DEFAULT_STATION_CODE, selectionFromStation } from "../components/StationPicker";
+import { listStations, getStationHydrants, retryStationGeocode, optimizeRoute } from "../lib/api";
 
 const SP_FALLBACK = { lat: -23.5612, lon: -46.6558 };
+// Usada se o índice de estações do CB SP não carregar: a estação padrão ainda pode ser consultada.
+const DEFAULT_SELECTION = { cmd: "CBM", gb: "03", sgb: "1", code: DEFAULT_STATION_CODE };
+const POLL_MS = 3000;
 
 export default function Dashboard() {
-  const [hydrants, setHydrants] = useState([]);
-  const [loading, setLoading] = useState({ add: false, csv: false, scrape: false, route: false });
+  const [stations, setStations] = useState([]);
+  const [stationsLoading, setStationsLoading] = useState(true);
+  const [sel, setSel] = useState({ cmd: "", gb: "", sgb: "", code: "" });
+
+  const [data, setData] = useState(null); // { station, cycle, hydrants, geocode }
+  const [stationLoading, setStationLoading] = useState(false);
+  const [stationErr, setStationErr] = useState(null);
+  const [reloadKey, setReloadKey] = useState(0);
+
   const [gps, setGps] = useState(null);
   const [gpsErr, setGpsErr] = useState(null);
   const [route, setRoute] = useState(null);
   const [routeOpen, setRouteOpen] = useState(false);
+  const [routeLoading, setRouteLoading] = useState(false);
   const [maxStops, setMaxStops] = useState(5);
   const [startId, setStartId] = useState(null);
 
-  const refresh = useCallback(async () => {
-    try {
-      const data = await listHydrants();
-      setHydrants(data);
-    } catch (e) {
-      toast.error("Falha ao carregar hidrantes");
-    }
+  // Índice de estações (uma vez) + estação padrão.
+  useEffect(() => {
+    let cancelled = false;
+    listStations()
+      .then((list) => {
+        if (cancelled) return;
+        setStations(list);
+        const def = list.find((s) => s.code === DEFAULT_STATION_CODE);
+        setSel(def ? selectionFromStation(def) : DEFAULT_SELECTION);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        toast.error("Não foi possível carregar a lista de estações do CB SP. Mostrando a estação padrão.");
+        setSel(DEFAULT_SELECTION);
+      })
+      .finally(() => !cancelled && setStationsLoading(false));
+    return () => { cancelled = true; };
   }, []);
 
-  const [geo, setGeo] = useState(null);
+  // Trocar de estação limpa a tela.
+  useEffect(() => {
+    setData(null);
+    setStationErr(null);
+    setRoute(null);
+    setRouteOpen(false);
+    setStartId(null);
+  }, [sel.code]);
 
-  const pollGeocode = useCallback(async () => {
-    try {
-      const s = await geocodeStatus();
-      setGeo(s);
-      refresh();
-      if (s.running || s.pending > 0) setTimeout(pollGeocode, 3000);
-    } catch {
-      setTimeout(pollGeocode, 6000);
-    }
-  }, [refresh]);
-
-  useEffect(() => { refresh(); pollGeocode(); }, [refresh, pollGeocode]);
+  // Carrega os hidrantes da estação e acompanha a geocodificação até terminar.
+  useEffect(() => {
+    if (!sel.code) return undefined;
+    let cancelled = false;
+    let timer;
+    const load = async (first) => {
+      if (first) setStationLoading(true);
+      try {
+        const d = await getStationHydrants(sel.code);
+        if (cancelled) return;
+        setData(d);
+        setStationErr(null);
+        if (d.geocode.pending > 0) timer = setTimeout(() => load(false), POLL_MS);
+      } catch (e) {
+        if (cancelled) return;
+        if (first) setStationErr(e.response?.data?.detail || "Falha ao carregar os hidrantes da estação.");
+        else timer = setTimeout(() => load(false), POLL_MS * 2);
+      } finally {
+        if (first && !cancelled) setStationLoading(false);
+      }
+    };
+    load(true);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [sel.code, reloadKey]);
 
   const handleRetryGeocode = async () => {
-    await geocodeRetry();
-    toast.info("Geocodificação reiniciada");
-    setTimeout(pollGeocode, 1000);
+    try {
+      await retryStationGeocode(sel.code);
+      toast.info("Localizando os endereços novamente");
+      setReloadKey((k) => k + 1);
+    } catch (e) {
+      toast.error(e.response?.data?.detail || "Não foi possível tentar novamente");
+    }
   };
 
   const requestGps = useCallback(() => {
@@ -89,121 +118,86 @@ export default function Dashboard() {
 
   useEffect(() => { requestGps(); }, [requestGps]);
 
-  const geocodedCount = useMemo(() => hydrants.filter((h) => h.geocoded).length, [hydrants]);
+  const hydrants = useMemo(() => data?.hydrants || [], [data]);
+  const geo = data?.geocode;
+  const located = useMemo(() => hydrants.filter((h) => h.lat != null && h.lon != null), [hydrants]);
+  const geocodedCount = located.length;
 
   useEffect(() => {
     if (geocodedCount > 0 && maxStops > geocodedCount) setMaxStops(geocodedCount);
     if (geocodedCount > 0 && maxStops === 0) setMaxStops(Math.min(5, geocodedCount));
   }, [geocodedCount, maxStops]);
 
-  const handleAdd = async (payload) => {
-    setLoading((l) => ({ ...l, add: true }));
-    try {
-      const h = await createHydrant(payload);
-      toast.success(`Hidrante ${h.code} cadastrado${h.geocoded ? "" : " (sem geocodificação)"}`);
-      refresh();
-    } catch (e) {
-      toast.error(e.response?.data?.detail || "Erro ao cadastrar");
-    } finally {
-      setLoading((l) => ({ ...l, add: false }));
-    }
-  };
-
-  const handleCsv = async (file) => {
-    setLoading((l) => ({ ...l, csv: true }));
-    try {
-      const data = await bulkUpload(file);
-      toast.success(`${data.length} hidrantes importados. Geocodificando...`);
-      pollGeocode();
-    } catch { toast.error("Falha ao importar CSV"); }
-    finally { setLoading((l) => ({ ...l, csv: false })); }
-  };
-
-  const handleScrape = async () => {
-    setLoading((l) => ({ ...l, scrape: true }));
-    try {
-      const data = await scrapeHydrants();
-      toast.success(
-        `${data.fetched} encontrados · ${data.inserted} importados · ${data.skipped} já existentes. Geocodificando...`
-      );
-      pollGeocode();
-    } catch (e) {
-      toast.error(e.response?.data?.detail || "Erro ao importar do CB SP");
-    } finally {
-      setLoading((l) => ({ ...l, scrape: false }));
-    }
-  };
-
-  const handleReimport = async () => {
-    setLoading((l) => ({ ...l, scrape: true }));
-    try {
-      const data = await reimportHydrants();
-      setRoute(null);
-      setStartId(null);
-      toast.success(`Lista atualizada: ${data.inserted} hidrantes importados do CB SP`);
-      pollGeocode();
-    } catch (e) {
-      toast.error(e.response?.data?.detail || "Erro ao reimportar do CB SP");
-      refresh();
-    } finally {
-      setLoading((l) => ({ ...l, scrape: false }));
-    }
-  };
-
-  const handleDelete = async (id) => {
-    try { await deleteHydrant(id); toast.success("Hidrante removido"); refresh(); }
-    catch { toast.error("Erro ao remover"); }
-  };
-
-  const handleClearAll = async () => {
-    if (!window.confirm("Remover TODOS os hidrantes?")) return;
-    try {
-      await deleteAllHydrants();
-      setRoute(null);
-      toast.success("Lista limpa");
-      refresh();
-    } catch {
-      toast.error("Erro ao limpar a base");
-    }
-  };
-
   const handleRoute = async () => {
-    const geocoded = hydrants.filter((h) => h.geocoded);
-    if (geocoded.length === 0) { toast.error("Nenhum hidrante geocodificado disponível"); return; }
+    if (located.length === 0) { toast.error("Nenhum hidrante localizado no mapa"); return; }
     const origin = gps || SP_FALLBACK;
-    setLoading((l) => ({ ...l, route: true }));
+    setRouteLoading(true);
     try {
       const result = await optimizeRoute({
         origin_lat: origin.lat,
         origin_lon: origin.lon,
-        hydrant_ids: geocoded.map((h) => h.id),
+        points: located.map((h) => ({ id: h.id, lat: h.lat, lon: h.lon })),
         max_stops: maxStops,
-        start_hydrant_id: startId,
+        start_id: startId,
       });
-      setRoute({ ...result, start_id: startId });
+      const byId = new Map(hydrants.map((h) => [h.id, h]));
+      setRoute({
+        ...result,
+        stops: result.stops.map((s) => ({ ...s, hydrant: byId.get(s.id) })).filter((s) => s.hydrant),
+        unreachable: hydrants.filter((h) => !h.geocoded).map((h) => h.code),
+        origin,
+      });
       setRouteOpen(true);
       toast.success(`Rota com ${result.stops.length} paradas gerada`);
     } catch (e) {
       toast.error(e.response?.data?.detail || "Erro ao gerar rota");
     } finally {
-      setLoading((l) => ({ ...l, route: false }));
+      setRouteLoading(false);
     }
   };
 
   const stats = useMemo(() => {
-    const ok = hydrants.filter((h) => h.status === "possivel_de_uso").length;
-    const inop = hydrants.filter((h) => h.status !== "possivel_de_uso").length;
-    const geo = hydrants.filter((h) => h.geocoded).length;
-    return { total: hydrants.length, ok, inop, geo };
-  }, [hydrants]);
+    const count = (st) => hydrants.filter((h) => h.status === st).length;
+    return {
+      total: hydrants.length,
+      ok: count("possivel_de_uso"),
+      inop: count("inoperante") + count("nao_localizado"),
+      geo: geocodedCount,
+    };
+  }, [hydrants, geocodedCount]);
 
   const routeOrderIds = route?.stops.map((s) => s.hydrant.id);
+  // A rota sempre parte da localização usada no cálculo (GPS ou centro de SP).
   const routePolyline = route
-    ? [
-        ...(route.start_id ? [] : [[(gps || SP_FALLBACK).lat, (gps || SP_FALLBACK).lon]]),
-        ...route.stops.map((s) => [s.hydrant.lat, s.hydrant.lon]),
-      ]
+    ? [[route.origin.lat, route.origin.lon], ...route.stops.map((s) => [s.hydrant.lat, s.hydrant.lon])]
     : null;
+
+  const station = data?.station;
+  const geocodingDone = !!geo && geo.pending === 0;
+
+  let listBody;
+  if (!sel.code) {
+    listBody = <EmptyState text={stationsLoading ? "Carregando estações do CB SP..." : "Selecione uma estação para ver os hidrantes."} spin={stationsLoading} />;
+  } else if (stationLoading && !data) {
+    listBody = <EmptyState text="Buscando hidrantes na página do CB SP..." spin />;
+  } else if (stationErr && !data) {
+    listBody = (
+      <div className="py-10 flex flex-col items-center gap-3 text-center" data-testid="station-error">
+        <p className="text-sm text-amber-300">{stationErr}</p>
+        <Button size="sm" onClick={() => setReloadKey((k) => k + 1)}
+          className="bg-[#1A2234] hover:bg-[#26334D] border border-[#26334D] text-slate-100 font-mono-t text-xs uppercase tracking-widest">
+          <RefreshCw className="w-4 h-4 mr-2" /> Tentar novamente
+        </Button>
+      </div>
+    );
+  } else {
+    listBody = (
+      <HydrantTable
+        hydrants={hydrants}
+        emptyMessage="Esta estação não tem hidrantes pendentes de vistoria neste ciclo."
+      />
+    );
+  }
 
   return (
     <div className="min-h-screen bg-[#0B0F17] text-slate-100 relative">
@@ -252,10 +246,10 @@ export default function Dashboard() {
       <div className="max-w-[1600px] mx-auto px-4 sm:px-6 pt-6">
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
           {[
-            { label: "Total", value: stats.total, color: "#F8FAFC", id: "total" },
+            { label: "Pendentes", value: stats.total, color: "#F8FAFC", id: "total" },
             { label: "Possível de uso", value: stats.ok, color: "#10B981", id: "ok" },
             { label: "Inoperante / Não localizado", value: stats.inop, color: "#EF4444", id: "inop" },
-            { label: "Geocodificados", value: stats.geo, color: "#38BDF8", id: "geo" },
+            { label: "No mapa", value: stats.geo, color: "#38BDF8", id: "geo" },
           ].map((s) => (
             <div key={s.id} className="tactical-card p-4" data-testid={`stat-${s.id}`}>
               <div className="font-mono-t text-[10px] uppercase tracking-widest text-slate-500">{s.label}</div>
@@ -265,16 +259,16 @@ export default function Dashboard() {
         </div>
       </div>
 
-      {geo && (geo.running || geo.pending > 0 || geo.failed > 0) && (
+      {geo && (geo.pending > 0 || geo.failed > 0) && (
         <div className="max-w-[1600px] mx-auto px-4 sm:px-6 pt-4">
           <div className="tactical-card p-3 flex items-center justify-between gap-3" data-testid="geocode-status-bar">
             <div className="flex items-center gap-2 text-xs font-mono-t uppercase tracking-widest text-slate-300">
-              {geo.running && <Loader2 className="w-4 h-4 animate-spin text-[#38BDF8]" />}
-              {geo.running || geo.pending > 0
-                ? `Geocodificando endereços · ${geo.geocoded}/${geo.total}`
-                : `${geo.failed} endereço(s) não localizado(s)`}
+              {geo.pending > 0 && <Loader2 className="w-4 h-4 animate-spin text-[#38BDF8]" />}
+              {geo.pending > 0
+                ? `Localizando endereços · ${geo.geocoded}/${geo.total}`
+                : `${geo.failed} endereço(s) não localizado(s) no mapa`}
             </div>
-            {!geo.running && geo.failed > 0 && (
+            {geo.pending === 0 && geo.failed > 0 && (
               <Button size="sm" variant="ghost" onClick={handleRetryGeocode} data-testid="retry-geocode-btn"
                 className="text-amber-300 hover:bg-[#1A2234] font-mono-t text-xs uppercase tracking-widest">
                 Tentar novamente
@@ -286,51 +280,31 @@ export default function Dashboard() {
 
       <main className="max-w-[1600px] mx-auto px-4 sm:px-6 py-6 grid grid-cols-1 lg:grid-cols-5 gap-5">
         <aside className="lg:col-span-2 space-y-4">
-          <div className="tactical-card p-5">
-            <h2 className="font-display text-lg font-bold uppercase tracking-wider mb-4">Cadastro</h2>
-            <Tabs defaultValue="form" className="w-full">
-              <TabsList className="grid grid-cols-3 bg-[#0B0F17] border border-[#26334D]">
-                <TabsTrigger value="form" data-testid="tab-form" className="font-mono-t text-[10px] uppercase tracking-widest">Manual</TabsTrigger>
-                <TabsTrigger value="csv" data-testid="tab-csv" className="font-mono-t text-[10px] uppercase tracking-widest">CSV</TabsTrigger>
-                <TabsTrigger value="cbsp" data-testid="tab-cbsp" className="font-mono-t text-[10px] uppercase tracking-widest">CB SP</TabsTrigger>
-              </TabsList>
-              <TabsContent value="form" className="mt-4">
-                <HydrantForm onSubmit={handleAdd} loading={loading.add} />
-              </TabsContent>
-              <TabsContent value="csv" className="mt-4">
-                <CsvUpload onUpload={handleCsv} loading={loading.csv} />
-              </TabsContent>
-              <TabsContent value="cbsp" className="mt-4 space-y-3">
-                <div className="rounded-lg bg-[#0B0F17] border border-[#26334D] p-3 space-y-2">
-                  <div className="font-display text-sm font-bold uppercase tracking-wider text-slate-200">
-                    Hidrantes Pendentes de Vistoria
-                  </div>
-                  <div className="text-[10px] font-mono-t uppercase tracking-widest text-slate-500">
-                    Ciclo 2026 · 2º Semestre · Corpo de Bombeiros SP
-                  </div>
-                  <div className="text-xs text-slate-400 leading-relaxed">
-                    Importa automaticamente a tabela oficial do CB/SP (estação 701031102) e geocodifica cada endereço.
-                  </div>
+          <div className="tactical-card p-5 space-y-4">
+            <h2 className="font-display text-lg font-bold uppercase tracking-wider">Estação de Bombeiros</h2>
+            <StationPicker stations={stations} value={sel} onChange={setSel} disabled={stationsLoading} />
+            {station && (
+              <div className="rounded-lg bg-[#0B0F17] border border-[#26334D] p-3 space-y-1.5" data-testid="station-info">
+                <div className="font-display text-sm font-bold uppercase tracking-wider text-slate-200">
+                  {station.name || `Estação ${station.code}`}
                 </div>
-                <Button
-                  type="button"
-                  onClick={handleScrape}
-                  disabled={loading.scrape}
-                  data-testid="scrape-btn"
-                  className="w-full btn-tactical-red font-display uppercase tracking-wider text-sm font-bold"
-                >
-                  {loading.scrape ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <DownloadCloud className="w-4 h-4 mr-2" />}
-                  Importar da Página CB SP
-                </Button>
-                <p className="text-[10px] text-slate-500 font-mono-t">
-                  A geocodificação dos endereços roda em segundo plano.
-                </p>
-              </TabsContent>
-            </Tabs>
+                <div className="text-[10px] font-mono-t uppercase tracking-widest text-slate-500">
+                  {[station.cmd, station.gb_sgb && `GB.SGB ${station.gb_sgb}`, `Cód. ${station.code}`].filter(Boolean).join(" · ")}
+                </div>
+                <div className="flex flex-wrap items-center gap-2 text-xs text-slate-400">
+                  <span>Pendentes de vistoria{data?.cycle ? ` · Ciclo ${data.cycle}` : ""}</span>
+                  {station.percent_done != null && <PercentBadge value={station.percent_done} />}
+                </div>
+                <a href={station.url} target="_blank" rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1 text-xs text-[#38BDF8] hover:underline">
+                  Ver página no site do CB SP <ExternalLink className="w-3 h-3" />
+                </a>
+              </div>
+            )}
           </div>
 
           <div className="tactical-card p-5 space-y-4">
-            <h2 className="font-display text-lg font-bold uppercase tracking-wider">Ações</h2>
+            <h2 className="font-display text-lg font-bold uppercase tracking-wider">Rota</h2>
 
             <div className="rounded-lg bg-[#0B0F17] border border-[#26334D] p-4">
               <StartPointPicker hydrants={hydrants} value={startId} onChange={setStartId} />
@@ -347,6 +321,7 @@ export default function Dashboard() {
                   </div>
                 </div>
                 <Input
+                  id="max-stops"
                   type="number"
                   min={1}
                   max={geocodedCount || 1}
@@ -374,26 +349,15 @@ export default function Dashboard() {
 
             <Button
               onClick={handleRoute}
-              disabled={loading.route || geocodedCount === 0}
+              disabled={routeLoading || geocodedCount === 0}
               data-testid="generate-route-btn"
               className="w-full btn-tactical-red font-display uppercase tracking-wider text-base font-bold py-6"
             >
-              {loading.route ? <Loader2 className="w-5 h-5 mr-2 animate-spin" /> : <Navigation className="w-5 h-5 mr-2" />}
+              {routeLoading ? <Loader2 className="w-5 h-5 mr-2 animate-spin" /> : <Navigation className="w-5 h-5 mr-2" />}
               Gerar Rota Otimizada
             </Button>
-
-            <Button
-              variant="ghost"
-              onClick={handleClearAll}
-              disabled={hydrants.length === 0}
-              data-testid="clear-all-btn"
-              className="w-full bg-[#1A2234] hover:bg-[#2A1A24] border border-[#26334D] text-slate-200 font-mono-t text-xs uppercase tracking-widest"
-            >
-              <Trash2 className="w-4 h-4 mr-2" />
-              Limpar Base
-            </Button>
             <p className="text-[11px] text-slate-500 leading-relaxed">
-              A rota parte do hidrante escolhido (ou do seu GPS) e visita os N hidrantes mais próximos em sequência (vizinho mais próximo + roteamento OSRM).
+              A rota sempre parte da sua localização (GPS). Se você escolher uma primeira parada, ela é a parada 1 e as demais seguem pelo hidrante mais próximo a partir dela; senão, a parada 1 é o hidrante mais próximo de você.
             </p>
           </div>
         </aside>
@@ -406,50 +370,60 @@ export default function Dashboard() {
                 {stats.geo} hidrantes no mapa
               </span>
             </div>
-            <HydrantMap hydrants={hydrants} gps={gps} routeOrder={routeOrderIds} routePolyline={routePolyline} />
+            <HydrantMap
+              hydrants={hydrants}
+              gps={gps}
+              routeOrder={routeOrderIds}
+              routePolyline={routePolyline}
+              fitKey={`${sel.code}:${geocodedCount > 0}:${geocodingDone}`}
+            />
           </div>
 
           <div className="tactical-card p-5">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
-              <h2 className="font-display text-lg font-bold uppercase tracking-wider">Lista de Hidrantes</h2>
-              <AlertDialog>
-                <AlertDialogTrigger asChild>
-                  <Button
-                    size="sm"
-                    disabled={loading.scrape}
-                    data-testid="reimport-btn"
-                    className="bg-[#1A2234] hover:bg-[#26334D] border border-[#26334D] text-slate-100 font-mono-t text-xs uppercase tracking-widest"
-                  >
-                    {loading.scrape ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <RefreshCw className="w-4 h-4 mr-2" />}
-                    Excluir tudo e reimportar
-                  </Button>
-                </AlertDialogTrigger>
-                <AlertDialogContent className="bg-[#121824] border-[#26334D] text-slate-100">
-                  <AlertDialogHeader>
-                    <AlertDialogTitle className="font-display uppercase tracking-wider">Atualizar lista de hidrantes?</AlertDialogTitle>
-                    <AlertDialogDescription className="text-slate-400">
-                      Todos os {hydrants.length} hidrantes cadastrados serão excluídos (inclusive os manuais e de CSV) e a tabela atual do CB SP será importada novamente.
-                    </AlertDialogDescription>
-                  </AlertDialogHeader>
-                  <AlertDialogFooter>
-                    <AlertDialogCancel data-testid="reimport-cancel" className="bg-transparent border-[#26334D] text-slate-300 hover:bg-[#1A2234] hover:text-white">Cancelar</AlertDialogCancel>
-                    <AlertDialogAction data-testid="reimport-confirm" onClick={handleReimport} className="btn-tactical-red">Excluir e reimportar</AlertDialogAction>
-                  </AlertDialogFooter>
-                </AlertDialogContent>
-              </AlertDialog>
+            <div className="flex flex-col sm:flex-row sm:items-baseline justify-between gap-1 mb-4">
+              <h2 className="font-display text-lg font-bold uppercase tracking-wider">Hidrantes Pendentes de Vistoria</h2>
+              {data?.cycle && (
+                <span className="font-mono-t text-[10px] uppercase tracking-widest text-slate-500">Ciclo {data.cycle}</span>
+              )}
             </div>
-            <HydrantTable hydrants={hydrants} onDelete={handleDelete} />
+            {listBody}
           </div>
         </section>
       </main>
 
       <footer className="border-t border-[#26334D] py-6 text-center">
         <p className="text-[10px] font-mono-t uppercase tracking-widest text-slate-600">
-          HydrantRoute SP · OpenStreetMap · OSRM · Google Maps Direct Link
+          HydrantRoute SP · Dados ao vivo do CB SP · OpenStreetMap · OSRM · Google Maps
         </p>
       </footer>
 
       <RouteResult open={routeOpen} onClose={setRouteOpen} result={route} />
+    </div>
+  );
+}
+
+// Verde quando a estação completou 100% das vistorias do ciclo; vermelho enquanto não completou.
+function PercentBadge({ value }) {
+  const done = value >= 100;
+  return (
+    <span
+      data-testid="station-percent"
+      className={`inline-flex items-center rounded-full border px-2 py-0.5 font-mono-t text-[11px] font-semibold uppercase tracking-wider ${
+        done
+          ? "bg-[#10B981]/15 border-[#10B981]/40 text-[#6EE7B7]"
+          : "bg-[#EF4444]/15 border-[#EF4444]/40 text-[#FCA5A5]"
+      }`}
+    >
+      {value.toLocaleString("pt-BR", { maximumFractionDigits: 2 })}% realizado
+    </span>
+  );
+}
+
+function EmptyState({ text, spin }) {
+  return (
+    <div className="py-10 flex items-center justify-center gap-2 text-sm text-slate-500">
+      {spin && <Loader2 className="w-4 h-4 animate-spin" />}
+      {text}
     </div>
   );
 }

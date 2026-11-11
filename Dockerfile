@@ -1,7 +1,7 @@
 # Imagem única: builda o React e serve tudo (API + site) pelo FastAPI na mesma porta.
 
 # ---------- 1) Frontend ----------
-FROM node:20-alpine AS frontend
+FROM node:24-alpine AS frontend
 WORKDIR /app/frontend
 COPY frontend/package.json frontend/yarn.lock* ./
 RUN corepack enable && yarn install --network-timeout 600000

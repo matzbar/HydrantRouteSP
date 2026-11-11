@@ -2,6 +2,7 @@ import React from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "./ui/dialog";
 import { Button } from "./ui/button";
 import { ExternalLink, Clock, Route, AlertTriangle } from "lucide-react";
+import { statusColor } from "./HydrantTable";
 
 export default function RouteResult({ open, onClose, result }) {
   if (!result) return null;
@@ -37,7 +38,7 @@ export default function RouteResult({ open, onClose, result }) {
           <div className="flex items-start gap-2 bg-amber-500/10 border border-amber-500/30 rounded-lg p-3 text-amber-200 text-xs">
             <AlertTriangle className="w-4 h-4 mt-0.5 flex-shrink-0" />
             <div>
-              <div className="font-semibold">Alguns hidrantes não puderam ser geocodificados:</div>
+              <div className="font-semibold">Hidrantes fora da rota (endereço não localizado no mapa):</div>
               <div className="font-mono-t">{result.unreachable.join(", ")}</div>
             </div>
           </div>
@@ -57,7 +58,7 @@ export default function RouteResult({ open, onClose, result }) {
                   <span className="font-mono-t font-bold text-white text-sm">{s.hydrant.code}</span>
                   <span
                     className="status-dot"
-                    style={{ backgroundColor: { possivel_de_uso: "#10B981", inoperante: "#EF4444", nao_localizado: "#F59E0B" }[s.hydrant.status] }}
+                    style={{ backgroundColor: statusColor[s.hydrant.status] || statusColor.outro }}
                   />
                 </div>
                 <div className="text-xs text-slate-400 truncate" title={s.hydrant.address}>

@@ -1,178 +1,318 @@
+"""HydrantRoute SP API.
+
+Lê ao vivo as páginas públicas do Corpo de Bombeiros (CB SP): o índice de estações e a tabela de
+"hidrantes pendentes de vistoria" de cada estação. Nada da página do CB SP é armazenado; o único dado
+persistido (opcionalmente, no MongoDB) é o cache de coordenadas dos endereços geocodificados.
+"""
 import asyncio
-import csv
 import difflib
-import io
 import logging
 import math
 import os
 import re
-import uuid
-from contextlib import suppress
-from datetime import datetime, timezone
+import time
+import unicodedata
+from contextlib import asynccontextmanager, suppress
 from pathlib import Path
-from typing import List, Optional
-from urllib.parse import quote
+from typing import Dict, List, Optional, Tuple
+from urllib.parse import quote, urljoin
 
 import httpx
 from bs4 import BeautifulSoup
 from dotenv import load_dotenv
-from fastapi import APIRouter, FastAPI, File, HTTPException, UploadFile
-from motor.motor_asyncio import AsyncIOMotorClient
-from pydantic import BaseModel, ConfigDict, Field
-from pymongo import ASCENDING, IndexModel
-from pymongo.errors import DuplicateKeyError
+from fastapi import APIRouter, FastAPI, HTTPException, Path as PathParam
+from pydantic import BaseModel, Field
 from starlette.middleware.cors import CORSMiddleware
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / ".env")
 
-mongo_url = os.environ["MONGO_URL"]
-client = AsyncIOMotorClient(mongo_url)
-db = client[os.environ["DB_NAME"]]
+logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
+logger = logging.getLogger("hydrantroute")
 
-DEFAULT_MUNICIPALITY = "São Paulo"
 DEFAULT_STATE = "SP"
+CB_INDEX_URL = "https://cbaplang.corpodebombeiros.sp.gov.br/hidrantes/07estacao/"
 NOMINATIM_URL = "https://nominatim.openstreetmap.org/search"
+PHOTON_URL = "https://photon.komoot.io/api/"
+ARCGIS_URL = "https://geocode.arcgis.com/arcgis/rest/services/World/GeocodeServer/findAddressCandidates"
 OSRM_URL = "https://router.project-osrm.org/route/v1/driving"
 USER_AGENT = "Mozilla/5.0 (compatible; HydrantRouteBR/1.0)"
-CB_SCRAPE_URL = "https://cbaplang.corpodebombeiros.sp.gov.br/hidrantes/07estacao/701031102.html"
-CB_TABLE_HEADING = "HIDRANTES PENDENTES DE VISTORIA - CICLO 2026 2º SEM"
 
-INDEXES: dict[str, list[IndexModel]] = {
-    "hydrants": [
-        IndexModel([("id", ASCENDING)], name="id", unique=True),
-        IndexModel([("code", ASCENDING)], name="code_unique", unique=True),
-    ],
-    "geocache": [IndexModel([("key", ASCENDING)], name="key_unique", unique=True)],
-}
+STATION_CODE_PATTERN = r"^\d{9}$"
+INDEX_TTL_S = 60 * 60  # o índice de estações muda pouco
+STATION_TTL_S = 5 * 60  # página de uma estação: evita bater no site do CB a cada consulta da tela
+MAX_ROUTE_POINTS = 500
 
 
-async def ensure_indexes() -> None:
-    for collection, models in INDEXES.items():
-        for model in models:
-            try:
-                await db[collection].create_indexes([model])
-            except Exception as exc:
-                logging.getLogger(__name__).error(
-                    "ensure_indexes(%s.%s): %s", collection, model.document["name"], exc
-                )
+# ----------------------------- Text helpers -----------------------------
+def fold(s: str) -> str:
+    """Minúsculas e sem acentos, para comparar textos do CB SP com tolerância."""
+    return "".join(c for c in unicodedata.normalize("NFD", (s or "").lower()) if unicodedata.category(c) != "Mn")
 
 
-app = FastAPI()
-api_router = APIRouter(prefix="/api")
+def norm_header(s: str) -> str:
+    return re.sub(r"\s+", " ", fold(s)).strip().upper()
 
 
-# ----------------------------- Models -----------------------------
-TYPE_VALUES = {"subterraneo", "coluna"}
-STATUS_VALUES = {"possivel_de_uso", "inoperante", "nao_localizado"}
+TYPE_KEYS = (("subterr", "subterraneo"), ("coluna", "coluna"), ("bica", "bica"))
+STATUS_KEYS = (("inoper", "inoperante"), ("possivel", "possivel_de_uso"), ("nao localizado", "nao_localizado"),
+               ("sem vistoria", "sem_vistoria"))
 
 
 def norm_type(v: str) -> str:
-    s = (v or "").lower().strip()
-    if "subterr" in s:
-        return "subterraneo"
-    if "coluna" in s:
-        return "coluna"
-    raise HTTPException(422, f"Tipo inválido: {v}")
+    s = fold(v)
+    return next((key for frag, key in TYPE_KEYS if frag in s), "outro")
 
 
 def norm_status(v: str) -> str:
-    s = (v or "").lower().strip()
-    s = s.replace("í", "i").replace("ó", "o").replace("á", "a").replace("_", " ")
-    if "inoper" in s:
-        return "inoperante"
-    if "possivel" in s:
-        return "possivel_de_uso"
-    if "localizado" in s:
-        return "nao_localizado"
-    raise HTTPException(422, f"Situação inválida: {v}")
+    s = fold(v).replace("_", " ")
+    return next((key for frag, key in STATUS_KEYS if frag in s), "outro")
 
 
 def parse_date_str(v: str) -> Optional[str]:
-    if not v:
-        return None
-    v = v.strip()
+    v = (v or "").strip()
     if re.fullmatch(r"\d{8}", v):
         return f"{v[0:4]}-{v[4:6]}-{v[6:8]}"
     return v or None
 
 
-class HydrantBase(BaseModel):
-    model_config = ConfigDict(extra="ignore")
-    code: str = Field(..., description="Código/ID do hidrante")
-    type: str = Field(..., description="subterraneo | coluna")
-    address: str
-    municipality: str = DEFAULT_MUNICIPALITY
-    last_inspection: Optional[str] = None
-    status: str = Field(..., description="possivel_de_uso | inoperante")
-    sector: Optional[str] = None
+def clean_cell(v: str) -> Optional[str]:
+    v = re.sub(r"\s+", " ", v or "").strip()
+    return None if v in ("", "None", "-") else v
 
 
-class HydrantCreate(HydrantBase):
-    pass
+# ----------------------------- CB SP pages -----------------------------
+async def fetch_html(url: str) -> str:
+    headers = {"User-Agent": USER_AGENT, "Accept-Language": "pt-BR,pt;q=0.9"}
+    try:
+        async with httpx.AsyncClient(timeout=30.0, headers=headers, follow_redirects=True) as hc:
+            r = await hc.get(url)
+            r.raise_for_status()
+            return r.text
+    except httpx.HTTPError as exc:
+        logger.warning("CB SP fetch failed for %s: %s", url, exc)
+        raise HTTPException(502, "Página do CB SP indisponível no momento. Tente novamente em instantes.")
 
 
-class HydrantUpdate(BaseModel):
-    code: Optional[str] = None
-    type: Optional[str] = None
-    address: Optional[str] = None
-    municipality: Optional[str] = None
-    last_inspection: Optional[str] = None
-    status: Optional[str] = None
-    sector: Optional[str] = None
+def _table_headers(table) -> List[str]:
+    return [norm_header(th.get_text(" ", strip=True)) for th in table.select("thead th")]
 
 
-class Hydrant(HydrantBase):
-    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
-    lat: Optional[float] = None
-    lon: Optional[float] = None
-    geocoded: bool = False
-    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+def parse_station_index(html: str) -> List[dict]:
+    """Lê a tabela CMD REGIONAL | GB.SGB | CODIGO | ESTAÇÃO | PERCENTUAL do índice de estações."""
+    soup = BeautifulSoup(html, "lxml")
+    table = next((t for t in soup.find_all("table")
+                  if {"CMD REGIONAL", "GB.SGB", "CODIGO", "ESTACAO"} <= set(_table_headers(t))), None)
+    if table is None:
+        raise HTTPException(502, "Lista de estações não encontrada na página do CB SP")
+    headers = _table_headers(table)
+    idx = {h: i for i, h in enumerate(headers)}
+    pct_i = next((i for i, h in enumerate(headers) if h.startswith("PERCENTUAL")), None)
+
+    stations, seen = [], set()
+    for tr in table.select("tbody tr"):
+        tds = tr.find_all("td")
+        if len(tds) < len(headers):
+            continue
+        cells = [td.get_text(" ", strip=True) for td in tds]
+        code = cells[idx["CODIGO"]]
+        if not re.fullmatch(r"\d{9}", code) or code in seen:
+            continue
+        seen.add(code)
+        gb_sgb = cells[idx["GB.SGB"]]
+        gb, _, sgb = gb_sgb.partition(".")
+        pct = None
+        if pct_i is not None:
+            m = re.search(r"[\d.,]+", cells[pct_i])
+            with suppress(ValueError):
+                pct = float(m.group(0).replace(",", ".")) if m else None
+        stations.append({
+            "code": code,
+            "name": cells[idx["ESTACAO"]],
+            "cmd": cells[idx["CMD REGIONAL"]],
+            "gb": gb.strip(),
+            "sgb": sgb.strip(),
+            "gb_sgb": gb_sgb,
+            "percent_done": pct,
+        })
+    if not stations:
+        raise HTTPException(502, "Nenhuma estação encontrada na página do CB SP")
+    return stations
 
 
-class RouteRequest(BaseModel):
-    origin_lat: float
-    origin_lon: float
-    hydrant_ids: Optional[List[str]] = None
-    max_stops: Optional[int] = Field(None, ge=1)
-    start_hydrant_id: Optional[str] = None
+REQUIRED_STATION_COLUMNS = ["ID", "TIPO", "ENDERECO", "MUNICIPIO", "SITUACAO"]
 
 
-class RouteStop(BaseModel):
-    order: int
-    hydrant: Hydrant
-    distance_from_prev_km: float
-    duration_from_prev_min: float
+def parse_station_page(html: str, page_url: str = CB_INDEX_URL) -> dict:
+    """Lê a tabela "HIDRANTES PENDENTES DE VISTORIA" de uma estação.
+
+    Estações com 100% vistoriado não têm essa tabela: devolve lista vazia, sem erro.
+    """
+    soup = BeautifulSoup(html, "lxml")
+    headings = [h for h in soup.find_all(["h1", "h2", "h3", "h4", "h5"]) if "CICLO" in norm_header(h.get_text())]
+    pending_h = next((h for h in headings if "PENDENTES DE VISTORIA" in norm_header(h.get_text())), None)
+    any_h = pending_h or (headings[0] if headings else None)
+    if any_h is None:
+        raise HTTPException(502, "Página da estação em formato não reconhecido")
+    cycle_m = re.search(r"CICLO\s+(.+)$", any_h.get_text(" ", strip=True), re.IGNORECASE)
+    cycle = cycle_m.group(1).strip() if cycle_m else None
+    if pending_h is None:
+        return {"cycle": cycle, "hydrants": []}
+
+    table = pending_h.find_next("table")
+    headers = _table_headers(table) if table else []
+    missing = [c for c in REQUIRED_STATION_COLUMNS if c not in headers]
+    if missing:
+        raise HTTPException(502, f"Colunas ausentes na tabela do CB SP: {', '.join(missing)}")
+    idx = {h: i for i, h in enumerate(headers)}
+
+    def col(cells: List[str], name: str) -> Optional[str]:
+        i = idx.get(name)
+        return clean_cell(cells[i]) if i is not None and i < len(cells) else None
+
+    hydrants, seen = [], set()
+    for tr in table.select("tbody tr"):
+        tds = tr.find_all("td")
+        cells = [td.get_text(" ", strip=True) for td in tds]
+        code = col(cells, "ID")
+        address = col(cells, "ENDERECO")
+        if not code or not address or code in seen:
+            continue
+        seen.add(code)
+        link = tds[idx["ID"]].find("a", href=True)
+        type_label = col(cells, "TIPO") or ""
+        status_label = col(cells, "SITUACAO") or ""
+        hydrants.append({
+            "id": code,
+            "code": code,
+            "type": norm_type(type_label),
+            "type_label": type_label,
+            "address": address,
+            "municipality": (col(cells, "MUNICIPIO") or "São Paulo").title(),
+            "last_inspection": parse_date_str(col(cells, "ULTIMA VISTORIA CB") or ""),
+            "status": norm_status(status_label),
+            "status_label": status_label,
+            "flow": col(cells, "VAZAO"),
+            "maintenance": col(cells, "MANUTENCAO"),
+            "sector": col(cells, "SETOR"),
+            "url": urljoin(page_url, link["href"]) if link else None,
+        })
+    return {"cycle": cycle, "hydrants": hydrants}
 
 
-class RouteResponse(BaseModel):
-    total_distance_km: float
-    total_duration_min: float
-    stops: List[RouteStop]
-    google_maps_url: str
-    google_maps_segments: List[str] = []
-    unreachable: List[str] = []
+class TTLCache:
+    """Cache em memória com validade, com um lock por chave para não buscar a mesma página em paralelo."""
+
+    def __init__(self, ttl_s: float):
+        self.ttl_s = ttl_s
+        self.data: Dict[str, Tuple[float, object]] = {}
+        self.locks: Dict[str, asyncio.Lock] = {}
+
+    async def get_or_load(self, key: str, loader):
+        hit = self.data.get(key)
+        if hit and time.monotonic() - hit[0] < self.ttl_s:
+            return hit[1]
+        lock = self.locks.setdefault(key, asyncio.Lock())
+        async with lock:
+            hit = self.data.get(key)
+            if hit and time.monotonic() - hit[0] < self.ttl_s:
+                return hit[1]
+            value = await loader()
+            self.data[key] = (time.monotonic(), value)
+            return value
+
+    def clear(self) -> None:
+        self.data.clear()
 
 
-class ScrapeResponse(BaseModel):
-    fetched: int
-    inserted: int
-    skipped: int
-    geocoded: int
+INDEX_CACHE = TTLCache(INDEX_TTL_S)
+STATION_CACHE = TTLCache(STATION_TTL_S)
 
 
-# ----------------------------- Helpers -----------------------------
-NOMINATIM_LOCK = asyncio.Lock()
-GEOCODE_CACHE: dict[str, Optional[dict]] = {}
-GEOCODE_STATE = {"running": False}
-BACKGROUND_TASKS: set = set()
+async def get_stations() -> List[dict]:
+    async def load():
+        return parse_station_index(await fetch_html(CB_INDEX_URL))
+    return await INDEX_CACHE.get_or_load("index", load)
 
 
-def spawn_geocode() -> None:
-    """Start geocode_pending in the background, keeping a strong reference so it isn't GC'd mid-run."""
-    task = asyncio.create_task(geocode_pending())
-    BACKGROUND_TASKS.add(task)
-    task.add_done_callback(BACKGROUND_TASKS.discard)
+async def get_station_page(code: str) -> dict:
+    url = urljoin(CB_INDEX_URL, f"{code}.html")
+
+    async def load():
+        return parse_station_page(await fetch_html(url), url)
+    return await STATION_CACHE.get_or_load(code, load)
+
+
+# ----------------------------- Geocoding -----------------------------
+class GeoCache:
+    """Coordenadas por endereço: memória do processo + MongoDB opcional (sobrevive a reinícios)."""
+
+    def __init__(self):
+        self.mem: Dict[str, dict] = {}
+        self.coll = None
+        self.client = None
+
+    def connect(self, mongo_url: Optional[str], db_name: str) -> None:
+        if not mongo_url:
+            logger.info("MONGO_URL não definida: cache de coordenadas só em memória")
+            return
+        from motor.motor_asyncio import AsyncIOMotorClient
+        self.client = AsyncIOMotorClient(mongo_url)
+        self.coll = self.client[db_name]["geocache"]
+
+    async def ensure_index(self) -> None:
+        if self.coll is None:
+            return
+        try:
+            await self.coll.create_index("key", name="key_unique", unique=True)
+        except Exception as exc:
+            logger.error("geocache index: %s", exc)
+
+    async def get(self, key: str) -> Optional[dict]:
+        if key in self.mem:
+            return self.mem[key]
+        if self.coll is None:
+            return None
+        try:
+            doc = await self.coll.find_one({"key": key}, {"_id": 0, "lat": 1, "lon": 1})
+        except Exception as exc:
+            logger.warning("geocache read failed: %s", exc)
+            return None
+        if doc:
+            self.mem[key] = {"lat": doc["lat"], "lon": doc["lon"]}
+            return self.mem[key]
+        return None
+
+    async def set(self, key: str, coords: dict) -> None:
+        self.mem[key] = {"lat": coords["lat"], "lon": coords["lon"]}
+        if self.coll is None:
+            return
+        try:
+            await self.coll.update_one({"key": key}, {"$set": {"key": key, **self.mem[key]}}, upsert=True)
+        except Exception as exc:  # inclui DuplicateKeyError de upserts concorrentes
+            logger.warning("geocache write failed: %s", exc)
+
+    def close(self) -> None:
+        if self.client is not None:
+            self.client.close()
+
+
+GEOCACHE = GeoCache()
+GEO_FAILED: set = set()
+GEO_INFLIGHT: set = set()
+_NOMINATIM_LOCK: Optional[asyncio.Lock] = None
+
+
+def nominatim_lock() -> asyncio.Lock:
+    global _NOMINATIM_LOCK
+    if _NOMINATIM_LOCK is None:  # criado dentro do event loop
+        _NOMINATIM_LOCK = asyncio.Lock()
+    return _NOMINATIM_LOCK
+
+
+def geo_key(address: str, municipality: str) -> str:
+    # Mesmo formato de chave da versão anterior, para reaproveitar o cache já existente no MongoDB.
+    return f"{fold(address.strip())}|{fold(municipality)}"
 
 
 SPLIT_RE = re.compile(
@@ -189,70 +329,14 @@ def address_candidates(address: str) -> List[str]:
     for p in parts:
         p = re.sub(r"^(A|O)\s+", "", p, flags=re.IGNORECASE)
         p = re.sub(r"^AV\.?\s+", "AVENIDA ", p, flags=re.IGNORECASE)
-        p = re.sub(r"\s+\d+\b.*$", "", p)  # drop house number and trailing notes
+        p = re.sub(r"\s+\d+\b.*$", "", p)  # remove número e observações finais
         p = re.sub(r"\s+", " ", p).strip(" ,.")
         if len(p) > 4 and p.upper() not in ("RUA", "PRACA", "PRAÇA"):
             cleaned.append(p)
     return cleaned or [address]
 
 
-async def nominatim_query(hc: httpx.AsyncClient, q: str) -> Optional[dict]:
-    if q in GEOCODE_CACHE:
-        return GEOCODE_CACHE[q]
-    params = {"q": q, "format": "json", "limit": 1, "countrycodes": "br"}
-    for attempt in range(1):
-        async with NOMINATIM_LOCK:
-            r = await hc.get(NOMINATIM_URL, params=params)
-            await asyncio.sleep(1.1)  # Nominatim policy: max 1 req/s
-        if r.status_code == 429:
-            return None
-        if r.status_code != 200:
-            return None
-        data = r.json()
-        result = {"lat": float(data[0]["lat"]), "lon": float(data[0]["lon"])} if data else None
-        GEOCODE_CACHE[q] = result
-        return result
-    return None
-
-
-PHOTON_URL = "https://photon.komoot.io/api/"
-
-
-def _fold(s: str) -> str:
-    import unicodedata
-    return "".join(c for c in unicodedata.normalize("NFD", (s or "").lower()) if unicodedata.category(c) != "Mn")
-
-
-async def photon_query(hc: httpx.AsyncClient, street: str, municipality: str) -> Optional[dict]:
-    key = f"photon|{street}|{municipality}"
-    if key in GEOCODE_CACHE:
-        return GEOCODE_CACHE[key]
-    params = {"q": f"{street}, {municipality}", "limit": 5, "lat": -23.55, "lon": -46.63}
-    try:
-        r = await hc.get(PHOTON_URL, params=params)
-    except httpx.HTTPError:
-        return None
-    if r.status_code != 200:
-        return None
-    feats = [f for f in r.json().get("features", []) if f["properties"].get("countrycode") == "BR"]
-    city = _fold(municipality)
-    match = next((f for f in feats if _fold(f["properties"].get("city", "")) == city), None)
-    result = None
-    if match:
-        lon, lat = match["geometry"]["coordinates"]
-        score = difflib.SequenceMatcher(None, _fold(street), _fold(match["properties"].get("name", ""))).ratio()
-        result = {"lat": lat, "lon": lon, "score": score}
-    GEOCODE_CACHE[key] = result
-    return result
-
-
-ARCGIS_URL = "https://geocode.arcgis.com/arcgis/rest/services/World/GeocodeServer/findAddressCandidates"
-
-
 async def arcgis_query(hc: httpx.AsyncClient, single_line: str) -> Optional[dict]:
-    key = f"arcgis|{single_line}"
-    if key in GEOCODE_CACHE:
-        return GEOCODE_CACHE[key]
     params = {"SingleLine": single_line, "f": "json", "maxLocations": 1, "countryCode": "BRA"}
     try:
         r = await hc.get(ARCGIS_URL, params=params)
@@ -261,33 +345,47 @@ async def arcgis_query(hc: httpx.AsyncClient, single_line: str) -> Optional[dict
     if r.status_code != 200:
         return None
     cands = r.json().get("candidates", [])
-    result = None
     if cands and cands[0].get("score", 0) >= 80:
         loc = cands[0]["location"]
-        result = {"lat": loc["y"], "lon": loc["x"]}
-    GEOCODE_CACHE[key] = result
-    return result
+        return {"lat": loc["y"], "lon": loc["x"]}
+    return None
 
 
-async def geocode_address(address: str, municipality: str) -> Optional[dict]:
-    """Geocode with a persistent Mongo cache so re-imports are instant."""
-    address = (address or "").strip()
-    if not address:
+async def photon_query(hc: httpx.AsyncClient, street: str, municipality: str) -> Optional[dict]:
+    params = {"q": f"{street}, {municipality}", "limit": 5, "lat": -23.55, "lon": -46.63}
+    try:
+        r = await hc.get(PHOTON_URL, params=params)
+    except httpx.HTTPError:
         return None
-    key = f"{_fold(address)}|{_fold(municipality)}"
-    cached = await db.geocache.find_one({"key": key}, {"_id": 0})
-    if cached:
-        return {"lat": cached["lat"], "lon": cached["lon"]}
-    res = await _geocode_remote(address, municipality)
-    if res:
-        with suppress(DuplicateKeyError):  # concurrent upsert of the same key
-            await db.geocache.update_one({"key": key}, {"$set": {"key": key, "lat": res["lat"], "lon": res["lon"]}}, upsert=True)
-    return res
+    if r.status_code != 200:
+        return None
+    feats = [f for f in r.json().get("features", []) if f.get("properties", {}).get("countrycode") == "BR"]
+    city = fold(municipality)
+    match = next((f for f in feats if fold(f["properties"].get("city", "")) == city), None)
+    if not match:
+        return None
+    lon, lat = match["geometry"]["coordinates"]
+    score = difflib.SequenceMatcher(None, fold(street), fold(match["properties"].get("name", ""))).ratio()
+    return {"lat": lat, "lon": lon, "score": score}
 
 
-async def _geocode_remote(address: str, municipality: str) -> Optional[dict]:
-    """Geocode: ArcGIS (supports 'X & Y' intersections) → Photon → Nominatim."""
-    full_city = f"{municipality}, {DEFAULT_STATE}, Brasil"
+async def nominatim_query(hc: httpx.AsyncClient, q: str) -> Optional[dict]:
+    params = {"q": q, "format": "json", "limit": 1, "countrycodes": "br"}
+    async with nominatim_lock():
+        try:
+            r = await hc.get(NOMINATIM_URL, params=params)
+        except httpx.HTTPError:
+            return None
+        finally:
+            await asyncio.sleep(1.1)  # política do Nominatim: no máximo 1 req/s
+    if r.status_code != 200:
+        return None
+    data = r.json()
+    return {"lat": float(data[0]["lat"]), "lon": float(data[0]["lon"])} if data else None
+
+
+async def geocode_remote(address: str, municipality: str) -> Optional[dict]:
+    """ArcGIS (aceita cruzamentos "X & Y") → Photon → Nominatim."""
     headers = {"User-Agent": USER_AGENT, "Accept": "application/json", "Accept-Language": "pt-BR,pt;q=0.9"}
     candidates = address_candidates(address)
     try:
@@ -302,414 +400,273 @@ async def _geocode_remote(address: str, municipality: str) -> Optional[dict]:
                 best = next((r for r in found if r["score"] >= 0.85), max(found, key=lambda r: r["score"]))
                 return {"lat": best["lat"], "lon": best["lon"]}
             for c in candidates:
-                res = await nominatim_query(hc, f"{c}, {full_city}")
+                res = await nominatim_query(hc, f"{c}, {municipality}, {DEFAULT_STATE}, Brasil")
                 if res:
                     return res
     except Exception as exc:
-        logging.getLogger(__name__).warning("geocode failed for %s: %s", address, exc)
+        logger.warning("geocode failed for %s: %s", address, exc)
     return None
 
 
-async def geocode_pending() -> None:
-    if GEOCODE_STATE["running"]:
-        return
-    GEOCODE_STATE["running"] = True
-    try:
-        query = {"geocoded": False, "geocode_failed": {"$ne": True}}
-        while docs := await db.hydrants.find(query, {"_id": 0}).to_list(200):
-            for d in docs:
-                try:
-                    coords = await geocode_address(d.get("address", ""), d.get("municipality") or DEFAULT_MUNICIPALITY)
-                except Exception as exc:
-                    logging.getLogger(__name__).warning("geocode_pending failed for %s: %s", d.get("code"), exc)
-                    coords = None
-                upd = {"lat": coords["lat"], "lon": coords["lon"], "geocoded": True} if coords else {"geocode_failed": True}
-                await db.hydrants.update_one({"id": d["id"]}, {"$set": upd})
-    finally:
-        GEOCODE_STATE["running"] = False
+class GeocodeWorker:
+    """Uma fila única processada em segundo plano, um endereço por vez."""
+
+    def __init__(self):
+        self.queue: Optional[asyncio.Queue] = None
+        self.task: Optional[asyncio.Task] = None
+
+    def start(self) -> None:
+        self.queue = asyncio.Queue()
+        self.task = asyncio.create_task(self._run())
+
+    async def stop(self) -> None:
+        if self.task:
+            self.task.cancel()
+            with suppress(asyncio.CancelledError):
+                await self.task
+
+    def enqueue(self, key: str, address: str, municipality: str) -> None:
+        if self.queue is None or key in GEO_INFLIGHT or key in GEO_FAILED:
+            return
+        GEO_INFLIGHT.add(key)
+        self.queue.put_nowait((key, address, municipality))
+
+    async def _run(self) -> None:
+        while True:
+            key, address, municipality = await self.queue.get()
+            try:
+                coords = await geocode_remote(address, municipality)
+                if coords:
+                    await GEOCACHE.set(key, coords)
+                else:
+                    GEO_FAILED.add(key)
+            except Exception as exc:
+                logger.warning("geocode worker error for %s: %s", address, exc)
+                GEO_FAILED.add(key)
+            finally:
+                GEO_INFLIGHT.discard(key)
+                self.queue.task_done()
 
 
+GEOCODER = GeocodeWorker()
+
+
+async def attach_coords(hydrants: List[dict]) -> Tuple[List[dict], dict]:
+    """Junta as coordenadas do cache e enfileira o que ainda não foi geocodificado."""
+    out, counts = [], {"total": len(hydrants), "geocoded": 0, "pending": 0, "failed": 0}
+    for h in hydrants:
+        key = geo_key(h["address"], h["municipality"])
+        coords = await GEOCACHE.get(key)
+        if coords:
+            state = "ok"
+        elif key in GEO_FAILED:
+            state = "failed"
+        else:
+            state = "pending"
+            GEOCODER.enqueue(key, h["address"], h["municipality"])
+        counts["geocoded" if state == "ok" else state] += 1
+        out.append({**h, "lat": coords["lat"] if coords else None, "lon": coords["lon"] if coords else None,
+                    "geocoded": bool(coords), "geocode_state": state})
+    return out, counts
+
+
+# ----------------------------- Routing -----------------------------
 def haversine_km(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
-    R = 6371.0
+    r = 6371.0
     p1, p2 = math.radians(lat1), math.radians(lat2)
     dp = math.radians(lat2 - lat1)
     dl = math.radians(lon2 - lon1)
     a = math.sin(dp / 2) ** 2 + math.cos(p1) * math.cos(p2) * math.sin(dl / 2) ** 2
-    return 2 * R * math.asin(math.sqrt(a))
+    return 2 * r * math.asin(math.sqrt(a))
 
 
-def nearest_neighbor_order(origin: tuple[float, float], points: List[tuple[float, float]], limit: Optional[int] = None) -> List[int]:
+def nearest_neighbor_order(origin: Tuple[float, float], points: List[Tuple[float, float]],
+                           limit: Optional[int] = None) -> List[int]:
     remaining = list(range(len(points)))
-    order = []
+    order: List[int] = []
     curr = origin
-    while remaining:
+    while remaining and (limit is None or len(order) < limit):
         best = min(remaining, key=lambda i: haversine_km(curr[0], curr[1], points[i][0], points[i][1]))
         order.append(best)
         curr = points[best]
         remaining.remove(best)
-        if limit is not None and len(order) >= limit:
-            break
     return order
 
 
-async def osrm_route(coords: List[tuple[float, float]]) -> Optional[dict]:
+async def osrm_route(coords: List[Tuple[float, float]]) -> Optional[dict]:
     if len(coords) < 2:
         return None
     coord_str = ";".join(f"{lon},{lat}" for lat, lon in coords)
-    url = f"{OSRM_URL}/{coord_str}"
-    params = {"overview": "false", "steps": "false"}
     try:
         async with httpx.AsyncClient(timeout=30.0) as hc:
-            r = await hc.get(url, params=params)
+            r = await hc.get(f"{OSRM_URL}/{coord_str}", params={"overview": "false", "steps": "false"})
             r.raise_for_status()
             return r.json()
     except Exception as exc:
-        logging.getLogger(__name__).warning("osrm failed: %s", exc)
+        logger.warning("osrm failed: %s", exc)
     return None
 
 
-def build_google_maps_url(origin: tuple[float, float], stops: List[tuple[float, float]]) -> str:
+def build_google_maps_url(origin: Tuple[float, float], stops: List[Tuple[float, float]]) -> str:
     if not stops:
         return ""
     base = "https://www.google.com/maps/dir/?api=1&travelmode=driving"
-    origin_str = f"{origin[0]},{origin[1]}"
-    dest = f"{stops[-1][0]},{stops[-1][1]}"
-    waypoints = stops[:-1]
-    url = f"{base}&origin={quote(origin_str)}&destination={quote(dest)}"
-    if waypoints:
-        wp = "|".join(f"{lat},{lon}" for lat, lon in waypoints)
-        url += f"&waypoints={quote(wp)}"
+    url = f"{base}&origin={quote(f'{origin[0]},{origin[1]}')}&destination={quote(f'{stops[-1][0]},{stops[-1][1]}')}"
+    if len(stops) > 1:
+        url += f"&waypoints={quote('|'.join(f'{lat},{lon}' for lat, lon in stops[:-1]))}"
     return url
 
 
-def doc_to_hydrant(doc: dict) -> Hydrant:
-    doc.pop("_id", None)
-    if isinstance(doc.get("created_at"), str):
-        doc["created_at"] = datetime.fromisoformat(doc["created_at"])
-    return Hydrant(**doc)
+# ----------------------------- API models -----------------------------
+class RoutePoint(BaseModel):
+    id: str = Field(..., min_length=1, max_length=64)
+    lat: float = Field(..., ge=-90, le=90)
+    lon: float = Field(..., ge=-180, le=180)
 
 
-def hydrant_to_doc(h: Hydrant) -> dict:
-    d = h.model_dump()
-    d["created_at"] = d["created_at"].isoformat()
-    return d
+class RouteRequest(BaseModel):
+    origin_lat: float = Field(..., ge=-90, le=90)
+    origin_lon: float = Field(..., ge=-180, le=180)
+    points: List[RoutePoint] = Field(..., min_length=1, max_length=MAX_ROUTE_POINTS)
+    max_stops: Optional[int] = Field(None, ge=1, le=MAX_ROUTE_POINTS)
+    start_id: Optional[str] = Field(None, max_length=64)
 
 
-# ----------------------------- Routes -----------------------------
+class RouteStop(BaseModel):
+    order: int
+    id: str
+    distance_from_prev_km: float
+    duration_from_prev_min: float
+
+
+class RouteResponse(BaseModel):
+    total_distance_km: float
+    total_duration_min: float
+    stops: List[RouteStop]
+    google_maps_url: str
+    google_maps_segments: List[str] = []
+
+
+# ----------------------------- App & routes -----------------------------
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    GEOCACHE.connect(os.environ.get("MONGO_URL"), os.environ.get("DB_NAME", "hydrantroute"))
+    index_task = asyncio.create_task(GEOCACHE.ensure_index())
+    GEOCODER.start()
+    try:
+        yield
+    finally:
+        await GEOCODER.stop()
+        index_task.cancel()
+        with suppress(asyncio.CancelledError):
+            await index_task
+        GEOCACHE.close()
+
+
+app = FastAPI(title="HydrantRoute SP", lifespan=lifespan)
+api_router = APIRouter(prefix="/api")
+
+
 @api_router.get("/")
 async def root():
     return {"message": "HydrantRoute SP API", "status": "ok"}
 
 
-@api_router.post("/hydrants", response_model=Hydrant)
-async def create_hydrant(payload: HydrantCreate):
-    payload.type = norm_type(payload.type)
-    payload.status = norm_status(payload.status)
-    payload.last_inspection = parse_date_str(payload.last_inspection) if payload.last_inspection else None
-    h = Hydrant(**payload.model_dump())
-    # unique code enforcement
-    existing = await db.hydrants.find_one({"code": h.code})
-    if existing:
-        raise HTTPException(400, f"Código {h.code} já cadastrado")
-    coords = await geocode_address(h.address, h.municipality)
-    if coords:
-        h.lat = coords["lat"]
-        h.lon = coords["lon"]
-        h.geocoded = True
-    try:
-        await db.hydrants.insert_one(hydrant_to_doc(h))
-    except DuplicateKeyError:
-        raise HTTPException(400, f"Código {h.code} já cadastrado")
-    return h
+@api_router.get("/stations")
+async def list_stations():
+    return await get_stations()
 
 
-@api_router.get("/hydrants", response_model=List[Hydrant])
-async def list_hydrants():
-    docs = await db.hydrants.find({}, {"_id": 0}).to_list(5000)
-    items = [doc_to_hydrant(d) for d in docs]
-    items.sort(key=lambda h: (0, int(h.code), "") if h.code.isdigit() else (1, 0, h.code))
-    return items
+@api_router.get("/stations/{code}/hydrants")
+async def station_hydrants(code: str = PathParam(..., pattern=STATION_CODE_PATTERN)):
+    page = await get_station_page(code)
+    station = {"code": code}
+    with suppress(HTTPException):  # o índice só enriquece a resposta; a página da estação basta
+        station = next((s for s in await get_stations() if s["code"] == code), station)
+    hydrants, counts = await attach_coords(page["hydrants"])
+    return {
+        "station": {**station, "url": urljoin(CB_INDEX_URL, f"{code}.html")},
+        "cycle": page["cycle"],
+        "hydrants": hydrants,
+        "geocode": counts,
+    }
 
 
-@api_router.put("/hydrants/{hydrant_id}", response_model=Hydrant)
-async def update_hydrant(hydrant_id: str, payload: HydrantUpdate):
-    doc = await db.hydrants.find_one({"id": hydrant_id}, {"_id": 0})
-    if not doc:
-        raise HTTPException(404, "Hidrante não encontrado")
-    h = doc_to_hydrant(doc)
-    updates = payload.model_dump(exclude_unset=True)
-    if "type" in updates:
-        updates["type"] = norm_type(updates["type"])
-    if "status" in updates:
-        updates["status"] = norm_status(updates["status"])
-    if "last_inspection" in updates and updates["last_inspection"]:
-        updates["last_inspection"] = parse_date_str(updates["last_inspection"])
-    if "code" in updates and await db.hydrants.find_one({"code": updates["code"], "id": {"$ne": hydrant_id}}):
-        raise HTTPException(400, f"Código {updates['code']} já cadastrado")
-    addr_changed = any(k in updates for k in ("address", "municipality"))
-    for k, v in updates.items():
-        setattr(h, k, v)
-    if addr_changed:
-        coords = await geocode_address(h.address, h.municipality)
-        h.lat = coords["lat"] if coords else None
-        h.lon = coords["lon"] if coords else None
-        h.geocoded = bool(coords)
-    try:
-        await db.hydrants.replace_one({"id": hydrant_id}, hydrant_to_doc(h))
-    except DuplicateKeyError:
-        raise HTTPException(400, f"Código {h.code} já cadastrado")
-    return h
-
-
-@api_router.delete("/hydrants/{hydrant_id}")
-async def delete_hydrant(hydrant_id: str):
-    res = await db.hydrants.delete_one({"id": hydrant_id})
-    if res.deleted_count == 0:
-        raise HTTPException(404, "Hidrante não encontrado")
-    return {"ok": True}
-
-
-@api_router.delete("/hydrants")
-async def delete_all_hydrants():
-    res = await db.hydrants.delete_many({})
-    return {"ok": True, "deleted": res.deleted_count}
-
-
-@api_router.post("/hydrants/bulk", response_model=List[Hydrant])
-async def bulk_create_hydrants(file: UploadFile = File(...)):
-    """CSV columns: code,type,address,municipality,last_inspection,status,sector"""
-    content = (await file.read()).decode("utf-8-sig", errors="ignore")
-    reader = csv.DictReader(io.StringIO(content))
-    created: List[Hydrant] = []
-
-    async def process(row: dict):
-        norm = {(k or "").lower().strip(): (v.strip() if isinstance(v, str) else v) for k, v in row.items() if k}
-        code = norm.get("code") or norm.get("id") or norm.get("codigo") or ""
-        address = norm.get("address") or norm.get("endereco") or norm.get("endereço") or norm.get("rua") or ""
-        if not code or not address:
-            return None
-        try:
-            h = Hydrant(
-                code=code,
-                type=norm_type(norm.get("type") or norm.get("tipo") or "coluna"),
-                address=address,
-                municipality=norm.get("municipality") or norm.get("municipio") or norm.get("município") or DEFAULT_MUNICIPALITY,
-                last_inspection=parse_date_str(norm.get("last_inspection") or norm.get("ultima_vistoria") or norm.get("última_vistoria") or ""),
-                status=norm_status(norm.get("status") or norm.get("situacao") or norm.get("situação") or "possivel_de_uso"),
-                sector=norm.get("sector") or norm.get("setor") or None,
-            )
-        except Exception:
-            return None
-        return h
-
-    for row in reader:
-        h = await process(row)
-        if h is None or await db.hydrants.find_one({"code": h.code}):
-            continue
-        await db.hydrants.insert_one(hydrant_to_doc(h))
-        created.append(h)
-    spawn_geocode()
-    return created
-
-
-REQUIRED_CB_COLUMNS = ["ID", "TIPO", "ENDERECO", "MUNICIPIO", "ULTIMA VISTORIA CB", "SITUACAO", "SETOR"]
-
-
-async def fetch_cb_hydrants() -> List[Hydrant]:
-    """Fetch and parse the CB SP pending-inspection table. Raises 502 on any source problem."""
-    headers = {"User-Agent": USER_AGENT, "Accept-Language": "pt-BR,pt;q=0.9"}
-    try:
-        async with httpx.AsyncClient(timeout=30.0, headers=headers, follow_redirects=True) as hc:
-            r = await hc.get(CB_SCRAPE_URL)
-            r.raise_for_status()
-            html = r.text
-    except httpx.HTTPError as exc:
-        raise HTTPException(502, f"Página do CB SP indisponível: {exc}")
-
-    soup = BeautifulSoup(html, "lxml")
-    target_h = next((h for h in soup.find_all(["h1", "h2", "h3", "h4", "h5"])
-                     if "PENDENTES DE VISTORIA" in h.get_text().upper() and "2026" in h.get_text()), None)
-    table = target_h.find_next("table") if target_h else None
-    if not table:
-        raise HTTPException(502, f"Tabela '{CB_TABLE_HEADING}' não encontrada na página do CB SP")
-
-    headers_th = [th.get_text(strip=True).upper() for th in table.select("thead th")]
-    missing = [c for c in REQUIRED_CB_COLUMNS if c not in headers_th]
-    if missing:
-        raise HTTPException(502, f"Colunas ausentes na tabela do CB SP: {', '.join(missing)}")
-    idx = {name: headers_th.index(name) for name in headers_th}
-
-    items: List[Hydrant] = []
-    for row in table.select("tbody tr"):
-        cells = [td.get_text(strip=True) for td in row.find_all("td")]
-        if len(cells) < len(headers_th) or not cells[idx["ID"]].strip():
-            continue
-        try:
-            items.append(Hydrant(
-                code=cells[idx["ID"]].strip(),
-                type=norm_type(cells[idx["TIPO"]]),
-                address=cells[idx["ENDERECO"]].strip(),
-                municipality=cells[idx["MUNICIPIO"]].strip().title() or DEFAULT_MUNICIPALITY,
-                last_inspection=parse_date_str(cells[idx["ULTIMA VISTORIA CB"]]),
-                status=norm_status(cells[idx["SITUACAO"]]),
-                sector=cells[idx["SETOR"]].strip() or None,
-            ))
-        except Exception as exc:
-            logging.getLogger(__name__).warning("CB row skipped: %s", exc)
-    if not items:
-        raise HTTPException(502, "Nenhum hidrante válido encontrado na tabela do CB SP")
-    return items
-
-
-async def insert_hydrants(items: List[Hydrant]) -> tuple[int, int]:
-    inserted = skipped = 0
-    for h in items:
-        if await db.hydrants.find_one({"code": h.code}, {"_id": 1}):
-            skipped += 1
-            continue
-        try:
-            await db.hydrants.insert_one(hydrant_to_doc(h))
-            inserted += 1
-        except DuplicateKeyError:
-            skipped += 1
-    spawn_geocode()
-    return inserted, skipped
-
-
-@api_router.post("/hydrants/scrape", response_model=ScrapeResponse)
-async def scrape_hydrants():
-    """Import the CB SP pending-inspection list, skipping codes already registered."""
-    items = await fetch_cb_hydrants()
-    inserted, skipped = await insert_hydrants(items)
-    geocoded = await db.hydrants.count_documents({"geocoded": True})
-    return ScrapeResponse(fetched=len(items), inserted=inserted, skipped=skipped, geocoded=geocoded)
-
-
-@api_router.post("/hydrants/reimport", response_model=ScrapeResponse)
-async def reimport_hydrants():
-    """Fetch the CB SP table first; only if it succeeds, delete all hydrants and insert the fresh list."""
-    items = await fetch_cb_hydrants()
-    await db.hydrants.delete_many({})
-    inserted, skipped = await insert_hydrants(items)
-    geocoded = await db.hydrants.count_documents({"geocoded": True})
-    return ScrapeResponse(fetched=len(items), inserted=inserted, skipped=skipped, geocoded=geocoded)
-
-
-@api_router.get("/hydrants/geocode-status")
-async def geocode_status():
-    total = await db.hydrants.count_documents({})
-    geocoded = await db.hydrants.count_documents({"geocoded": True})
-    failed = await db.hydrants.count_documents({"geocode_failed": True})
-    return {"running": GEOCODE_STATE["running"], "total": total, "geocoded": geocoded, "failed": failed,
-            "pending": total - geocoded - failed}
-
-
-@api_router.post("/hydrants/geocode-retry")
-async def geocode_retry():
-    await db.hydrants.update_many({"geocode_failed": True}, {"$unset": {"geocode_failed": ""}})
-    spawn_geocode()
-    return {"ok": True}
+@api_router.post("/stations/{code}/geocode-retry")
+async def station_geocode_retry(code: str = PathParam(..., pattern=STATION_CODE_PATTERN)):
+    page = await get_station_page(code)
+    for h in page["hydrants"]:
+        GEO_FAILED.discard(geo_key(h["address"], h["municipality"]))
+    _, counts = await attach_coords(page["hydrants"])
+    return {"ok": True, "geocode": counts}
 
 
 @api_router.post("/route/optimize", response_model=RouteResponse)
 async def optimize_route(req: RouteRequest):
-    if req.hydrant_ids:
-        docs = await db.hydrants.find({"id": {"$in": req.hydrant_ids}}, {"_id": 0}).to_list(2000)
-    else:
-        docs = await db.hydrants.find({"geocoded": True}, {"_id": 0}).to_list(2000)
-    hydrants = [doc_to_hydrant(d) for d in docs]
-    geocoded = [h for h in hydrants if h.lat is not None and h.lon is not None]
-    unreachable = [h.code for h in hydrants if h.lat is None or h.lon is None]
-
-    if not geocoded:
-        raise HTTPException(400, "Nenhum hidrante possui coordenadas geocodificadas")
-
-    start = None
-    if req.start_hydrant_id:
-        start = next((h for h in geocoded if h.id == req.start_hydrant_id), None)
+    points = list({p.id: p for p in req.points}.values())  # ignora ids repetidos
+    # A partida é sempre a localização do usuário (GPS). Se um hidrante foi escolhido, ele é a 1ª parada
+    # e as demais seguem por vizinho mais próximo a partir dele.
+    origin = (req.origin_lat, req.origin_lon)
+    if req.start_id:
+        start = next((p for p in points if p.id == req.start_id), None)
         if not start:
-            raise HTTPException(400, "Hidrante de início não encontrado ou sem coordenadas")
-        geocoded = [h for h in geocoded if h.id != start.id]
-        origin = (start.lat, start.lon)
+            raise HTTPException(400, "Hidrante escolhido como primeira parada não encontrado ou sem coordenadas")
+        others = [p for p in points if p.id != start.id]
         limit = req.max_stops - 1 if req.max_stops else None
+        order = nearest_neighbor_order((start.lat, start.lon), [(p.lat, p.lon) for p in others], limit=limit)
+        ordered = [start] + [others[i] for i in order]
     else:
-        origin = (req.origin_lat, req.origin_lon)
-        limit = req.max_stops
-    points = [(h.lat, h.lon) for h in geocoded]
-    order = nearest_neighbor_order(origin, points, limit=limit) if limit != 0 else []
-    ordered_hydrants = [geocoded[i] for i in order]
-    ordered_coords = [(h.lat, h.lon) for h in ordered_hydrants]
-
+        order = nearest_neighbor_order(origin, [(p.lat, p.lon) for p in points], limit=req.max_stops)
+        ordered = [points[i] for i in order]
+    ordered_coords = [(p.lat, p.lon) for p in ordered]
     route_coords = [origin] + ordered_coords
+
     osrm = await osrm_route(route_coords)
-    legs_dist_km, legs_dur_min = [], []
+    legs_km: List[float] = []
+    legs_min: List[float] = []
     if osrm and osrm.get("code") == "Ok" and osrm.get("routes"):
         for leg in osrm["routes"][0].get("legs", []):
-            legs_dist_km.append(leg.get("distance", 0) / 1000.0)
-            legs_dur_min.append(leg.get("duration", 0) / 60.0)
-    if not legs_dist_km:
-        for i in range(len(route_coords) - 1):
-            d = haversine_km(route_coords[i][0], route_coords[i][1], route_coords[i + 1][0], route_coords[i + 1][1])
-            legs_dist_km.append(d)
-            legs_dur_min.append((d / 40.0) * 60.0)
+            legs_km.append(leg.get("distance", 0) / 1000.0)
+            legs_min.append(leg.get("duration", 0) / 60.0)
+    if len(legs_km) != len(route_coords) - 1:  # OSRM indisponível: linha reta a 40 km/h
+        legs_km = [haversine_km(*route_coords[i], *route_coords[i + 1]) for i in range(len(route_coords) - 1)]
+        legs_min = [d / 40.0 * 60.0 for d in legs_km]
 
-    stops = [RouteStop(order=1, hydrant=start, distance_from_prev_km=0, duration_from_prev_min=0)] if start else []
-    offset = len(stops)
-    for idx_, h in enumerate(ordered_hydrants):
-        stops.append(RouteStop(
-            order=idx_ + 1 + offset,
-            hydrant=h,
-            distance_from_prev_km=round(legs_dist_km[idx_], 2) if idx_ < len(legs_dist_km) else 0,
-            duration_from_prev_min=round(legs_dur_min[idx_], 1) if idx_ < len(legs_dur_min) else 0,
-        ))
+    stops = [
+        RouteStop(order=i + 1, id=p.id, distance_from_prev_km=round(legs_km[i], 2),
+                  duration_from_prev_min=round(legs_min[i], 1))
+        for i, p in enumerate(ordered)
+    ]
 
-    gmaps_url = build_google_maps_url(origin, ordered_coords) or (
-        f"https://www.google.com/maps/search/?api=1&query={origin[0]},{origin[1]}")
-    # Google Maps allows ~9 waypoints per link: split long routes into chained segments of 10 stops
+    # O Google Maps aceita ~9 pontos intermediários por link: trechos encadeados de 10 paradas.
     segments, seg_origin = [], origin
     for i in range(0, len(ordered_coords), 10):
         chunk = ordered_coords[i:i + 10]
         segments.append(build_google_maps_url(seg_origin, chunk))
         seg_origin = chunk[-1]
+    gmaps_url = segments[0] if segments else f"https://www.google.com/maps/search/?api=1&query={origin[0]},{origin[1]}"
     return RouteResponse(
-        total_distance_km=round(sum(legs_dist_km), 2),
-        total_duration_min=round(sum(legs_dur_min), 1),
+        total_distance_km=round(sum(legs_km), 2),
+        total_duration_min=round(sum(legs_min), 1),
         stops=stops,
-        google_maps_url=segments[0] if len(segments) > 1 else gmaps_url,
+        google_maps_url=gmaps_url,
         google_maps_segments=segments,
-        unreachable=unreachable,
     )
 
 
 app.include_router(api_router)
 
-# Serve the built React app from the same service when available (Docker image / single-service deploy).
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[o.strip() for o in os.environ.get("CORS_ORIGINS", "*").split(",") if o.strip()],
+    allow_credentials=False,
+    allow_methods=["GET", "POST"],
+    allow_headers=["*"],
+)
+
+# Serve o React compilado no mesmo serviço quando disponível (imagem Docker / deploy único).
 STATIC_DIR = Path(os.environ.get("STATIC_DIR", ROOT_DIR.parent / "frontend" / "build"))
 if (STATIC_DIR / "index.html").is_file():
     from fastapi.staticfiles import StaticFiles
 
     app.mount("/", StaticFiles(directory=STATIC_DIR, html=True), name="frontend")
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_credentials=True,
-    allow_origins=os.environ.get("CORS_ORIGINS", "*").split(","),
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
-logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
-logger = logging.getLogger(__name__)
-
-
-@app.on_event("startup")
-async def start_index_build():
-    app.state.index_task = asyncio.create_task(ensure_indexes())
-
-
-@app.on_event("shutdown")
-async def shutdown_db_client():
-    app.state.index_task.cancel()
-    with suppress(asyncio.CancelledError):
-        await app.state.index_task
-    client.close()

@@ -24,7 +24,7 @@ export default function StartPointPicker({ hydrants, value, onChange }) {
 
   return (
     <div className="space-y-2" data-testid="start-point-picker">
-      <div className="font-mono-t text-[10px] uppercase tracking-widest text-slate-400">Início da rota</div>
+      <div className="font-mono-t text-[10px] uppercase tracking-widest text-slate-400">Primeira parada</div>
       <div
         className="flex items-center gap-2 rounded-md border border-[#26334D] bg-[#121824] px-3 py-2"
         data-testid="start-point-selected"
@@ -41,7 +41,7 @@ export default function StartPointPicker({ hydrants, value, onChange }) {
               <span className="text-slate-400"> · {selected.address}</span>
             </>
           ) : (
-            <span className="text-slate-300">Minha localização atual (GPS)</span>
+            <span className="text-slate-300">Automática: hidrante mais próximo do GPS</span>
           )}
         </div>
         {selected && (
@@ -50,7 +50,7 @@ export default function StartPointPicker({ hydrants, value, onChange }) {
             onClick={() => pick(null)}
             data-testid="start-point-clear"
             className="text-slate-500 hover:text-white transition-colors"
-            title="Voltar para o GPS"
+            title="Voltar para automática" aria-label="Voltar para automática"
           >
             <X className="w-4 h-4" />
           </button>
