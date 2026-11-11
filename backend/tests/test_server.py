@@ -5,6 +5,10 @@ import pytest
 from fastapi import HTTPException
 from fastapi.testclient import TestClient
 
+import cb_sp
+import geocoding
+import osrm
+import routing
 import server
 
 FIXTURES = Path(__file__).parent / "fixtures"
@@ -15,7 +19,7 @@ SEM_PENDENTES_HTML = (FIXTURES / "station_701011201_sem_pendentes.html").read_te
 
 # ----------------------------- Parsing -----------------------------
 def test_parse_station_index():
-    stations = server.parse_station_index(INDEX_HTML)
+    stations = cb_sp.parse_station_index(INDEX_HTML)
     assert len(stations) == 264
     vf = next(s for s in stations if s["code"] == "701031102")
     assert vf == {"code": "701031102", "name": "SP - VILA FORMOSA", "cmd": "CBM", "gb": "03", "sgb": "1",
@@ -26,12 +30,12 @@ def test_parse_station_index():
 
 def test_parse_station_index_rejects_unknown_layout():
     with pytest.raises(HTTPException) as exc:
-        server.parse_station_index("<html><body><table><tr><td>x</td></tr></table></body></html>")
+        cb_sp.parse_station_index("<html><body><table><tr><td>x</td></tr></table></body></html>")
     assert exc.value.status_code == 502
 
 
 def test_parse_station_page_pending_table():
-    page = server.parse_station_page(VILA_FORMOSA_HTML, "https://example.test/07estacao/701031102.html")
+    page = cb_sp.parse_station_page(VILA_FORMOSA_HTML, "https://example.test/07estacao/701031102.html")
     assert page["cycle"] == "2026 2º SEM"
     hs = page["hydrants"]
     assert len(hs) == 36
@@ -47,13 +51,13 @@ def test_parse_station_page_pending_table():
 
 
 def test_parse_station_page_without_pending_table():
-    page = server.parse_station_page(SEM_PENDENTES_HTML)
+    page = cb_sp.parse_station_page(SEM_PENDENTES_HTML)
     assert page == {"cycle": "2026 2º SEM", "hydrants": []}
 
 
 def test_parse_station_page_unknown_layout():
     with pytest.raises(HTTPException) as exc:
-        server.parse_station_page("<html><body><p>Manutenção</p></body></html>")
+        cb_sp.parse_station_page("<html><body><p>Manutenção</p></body></html>")
     assert exc.value.status_code == 502
 
 
@@ -62,7 +66,7 @@ def test_parse_station_page_unknown_layout():
     ("NÃO LOCALIZADO", "nao_localizado"), ("SEM VISTORIA", "sem_vistoria"), ("???", "outro"),
 ])
 def test_norm_status(raw, expected):
-    assert server.norm_status(raw) == expected
+    assert cb_sp.norm_status(raw) == expected
 
 
 @pytest.mark.parametrize("raw,expected", [
@@ -70,14 +74,14 @@ def test_norm_status(raw, expected):
     ("", "outro"),
 ])
 def test_norm_type(raw, expected):
-    assert server.norm_type(raw) == expected
+    assert cb_sp.norm_type(raw) == expected
 
 
 # ----------------------------- Routing helpers -----------------------------
 def test_google_maps_url():
-    url = server.build_google_maps_url((1.0, 2.0), [(3.0, 4.0), (5.0, 6.0)])
+    url = routing.build_google_maps_url((1.0, 2.0), [(3.0, 4.0), (5.0, 6.0)])
     assert "origin=1.0%2C2.0" in url and "destination=5.0%2C6.0" in url and "waypoints=3.0%2C4.0" in url
-    assert server.build_google_maps_url((1.0, 2.0), []) == ""
+    assert routing.build_google_maps_url((1.0, 2.0), []) == ""
 
 
 # ----------------------------- API -----------------------------
@@ -111,17 +115,17 @@ def client(monkeypatch):
         return {}
 
     monkeypatch.delenv("MONGO_URL", raising=False)
-    monkeypatch.setattr(server, "fetch_html", fake_fetch)
-    monkeypatch.setattr(server, "geocode_remote", fake_geocode)
-    monkeypatch.setattr(server, "osrm_route", no_osrm)
-    monkeypatch.setattr(server, "osrm_table", no_table)
-    monkeypatch.setattr(server, "fetch_official_coords", no_official)
-    server.INDEX_CACHE.clear()
-    server.STATION_CACHE.clear()
-    server.OFFICIAL_CACHE.clear()
-    server.GEOCACHE.mem.clear()
-    server.GEO_FAILED.clear()
-    server.GEO_INFLIGHT.clear()
+    monkeypatch.setattr(cb_sp, "fetch_html", fake_fetch)
+    monkeypatch.setattr(geocoding, "geocode_remote", fake_geocode)
+    monkeypatch.setattr(osrm, "osrm_route", no_osrm)
+    monkeypatch.setattr(osrm, "osrm_table", no_table)
+    monkeypatch.setattr(cb_sp, "fetch_official_coords", no_official)
+    cb_sp.INDEX_CACHE.clear()
+    cb_sp.STATION_CACHE.clear()
+    cb_sp.OFFICIAL_CACHE.clear()
+    geocoding.GEOCACHE.mem.clear()
+    geocoding.GEO_FAILED.clear()
+    geocoding.GEO_INFLIGHT.clear()
     with TestClient(server.app) as c:
         c.fetch_calls = calls
         yield c
@@ -261,7 +265,7 @@ def test_route_uses_osrm_matrix_and_beats_nearest_neighbor(client, monkeypatch):
         assert len(coords) == 4
         return [r[:] for r in dur], [r[:] for r in dist]
 
-    monkeypatch.setattr(server, "osrm_table", fake_table)
+    monkeypatch.setattr(osrm, "osrm_table", fake_table)
     d = client.post("/api/route/optimize", json={**ORIGIN, "points": pts}).json()
     assert [s["id"] for s in d["stops"]] == ["b", "c", "a"]
     assert d["optimization"]["source"] == "osrm"
@@ -277,7 +281,7 @@ def test_route_preselects_candidates_when_many_points(client, monkeypatch):
         seen["n"] = len(coords)
         return None
 
-    monkeypatch.setattr(server, "osrm_table", fake_table)
+    monkeypatch.setattr(osrm, "osrm_table", fake_table)
     many = [{"id": str(i), "lat": -23.5 - i / 1000, "lon": -46.6} for i in range(150)]
     d = client.post("/api/route/optimize", json={**ORIGIN, "points": many, "max_stops": 10}).json()
     assert seen["n"] == server.OSRM_TABLE_MAX
@@ -293,9 +297,9 @@ def test_parse_official_features():
         {"attributes": {"ID": None}, "geometry": {"x": -46.5, "y": -23.5}},  # sem ID: descartado
         {"attributes": {"ID": 2}, "geometry": None},  # sem geometria: descartado
     ]}
-    assert server.parse_official_features(data) == {"973": {"lat": -23.588755, "lon": -46.523992}}
+    assert cb_sp.parse_official_features(data) == {"973": {"lat": -23.588755, "lon": -46.523992}}
     with pytest.raises(ValueError):
-        server.parse_official_features({"error": {"code": 400}})
+        cb_sp.parse_official_features({"error": {"code": 400}})
 
 
 def test_official_position_wins_and_skips_geocoding(client, monkeypatch):
@@ -308,8 +312,8 @@ def test_official_position_wins_and_skips_geocoding(client, monkeypatch):
         geocoded.append(address)
         return {"lat": -23.55, "lon": -46.55}
 
-    monkeypatch.setattr(server, "fetch_official_coords", official)
-    monkeypatch.setattr(server, "geocode_remote", tracking_geocode)
+    monkeypatch.setattr(cb_sp, "fetch_official_coords", official)
+    monkeypatch.setattr(geocoding, "geocode_remote", tracking_geocode)
     d = _wait_geocoding(client)
     by_code = {h["code"]: h for h in d["hydrants"]}
     assert d["geocode"]["official"] == 35 and d["geocode"]["geocoded"] == 36
@@ -323,7 +327,7 @@ def test_official_service_down_falls_back_to_address(client, monkeypatch):
     async def broken(codes):
         raise RuntimeError("ArcGIS fora do ar")
 
-    monkeypatch.setattr(server, "fetch_official_coords", broken)
+    monkeypatch.setattr(cb_sp, "fetch_official_coords", broken)
     d = _wait_geocoding(client)
     assert d["geocode"]["official"] == 0
     assert all(h["location_source"] in ("endereco", None) for h in d["hydrants"])
