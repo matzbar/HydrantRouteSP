@@ -1,6 +1,8 @@
 # HydrantRoute SP
 
-App para cadastrar hidrantes (manual, CSV ou importando a tabela do CB SP), geocodificar os endereços e gerar uma rota otimizada no Google Maps.
+App para escolher uma estação de bombeiros (CMD Regional → GB → SGB → Estação), ver os hidrantes **pendentes de vistoria** dela direto do site do CB SP, localizar os endereços no mapa e gerar uma rota otimizada no Google Maps.
+
+Os dados dos hidrantes são lidos ao vivo do site do CB SP (com cache de 5 minutos) e **não são armazenados**. O único dado guardado é o cache de coordenadas dos endereços. A estação padrão é **CBM · 03º GB · SGB 03.1 · SP - VILA FORMOSA**.
 
 - **Backend:** FastAPI + MongoDB (`backend/server.py`)
 - **Frontend:** React (CRA/craco) + Leaflet + Tailwind (`frontend/`)
@@ -12,8 +14,8 @@ Em produção é **um único serviço**: o `Dockerfile` builda o React e o FastA
 
 | Variável      | Obrigatória | Exemplo                                   |
 |---------------|-------------|-------------------------------------------|
-| `MONGO_URL`   | sim         | `mongodb+srv://user:senha@cluster.mongodb.net` |
-| `DB_NAME`     | sim         | `hydrantroute`                            |
+| `MONGO_URL`   | não (recomendada) | `mongodb+srv://user:senha@cluster.mongodb.net` |
+| `DB_NAME`     | não (`hydrantroute`) | `hydrantroute`                       |
 | `PORT`        | não (8000)  | definida automaticamente pelo Render/Railway |
 | `CORS_ORIGINS`| não (`*`)   | só se o frontend ficar em outro domínio   |
 
@@ -32,6 +34,8 @@ docker compose up -d --build        # app + MongoDB
 2. **App:** no [Render](https://render.com) (ou Railway/Fly.io), crie um *Web Service* apontando para este repositório. Ele detecta o `Dockerfile` sozinho.
 3. Configure `MONGO_URL` e `DB_NAME`. Pronto: o site e a API sobem na mesma URL.
 
+> Sem `MONGO_URL` o app funciona, mas o cache de coordenadas fica só na memória: a cada reinício os endereços são localizados de novo (leva de alguns segundos a poucos minutos por estação).
+
 > Rode com **1 instância/worker**: o progresso da geocodificação em segundo plano fica na memória do processo.
 
 ## Desenvolvimento sem Docker
@@ -39,7 +43,7 @@ docker compose up -d --build        # app + MongoDB
 ```bash
 # Backend (Python 3.11+)
 cd backend
-cp .env.example .env               # ajuste MONGO_URL
+# opcional: crie backend/.env com MONGO_URL=... e DB_NAME=...
 pip install -r requirements-dev.txt
 uvicorn server:app --reload --port 8001
 
@@ -53,11 +57,10 @@ Alternativa: rode `yarn build` no frontend e só o `uvicorn` acima. O backend se
 
 ## Testes
 
-São testes de integração que chamam uma instância rodando:
+Testes unitários, sem rede e sem banco (usam cópias das páginas do CB SP em `backend/tests/fixtures`):
 
 ```bash
 cd backend
-REACT_APP_BACKEND_URL=http://localhost:8000 pytest
+pip install -r requirements-dev.txt
+pytest
 ```
-
-⚠️ Eles chamam `/api/hydrants/reimport`, que **apaga todos os hidrantes**. Rode só contra um banco descartável, nunca contra produção.

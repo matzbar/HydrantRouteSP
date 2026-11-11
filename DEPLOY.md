@@ -8,7 +8,7 @@ Vamos usar 3 serviços gratuitos:
 | Serviço | Para que serve |
 |---------|----------------|
 | **GitHub** | Guarda o código do app (você já tem o repositório) |
-| **MongoDB Atlas** | O banco de dados onde ficam os hidrantes |
+| **MongoDB Atlas** | Guarda as coordenadas dos endereços já localizados (opcional, mas deixa o app bem mais rápido) |
 | **Render** | O "servidor" que deixa o app no ar com um endereço `https://...` |
 
 > 💡 Dica: abra um bloco de notas para ir guardando as senhas e endereços que vão aparecer no caminho.
@@ -103,9 +103,9 @@ Pronto, o banco está criado. Não precisa criar tabelas, o app faz isso sozinho
 ## Parte 4 — Testar se está tudo funcionando (5 min)
 
 1. Abra o endereço do app. O navegador vai pedir permissão de **localização**: clique em **Permitir** (é o GPS usado como ponto de partida da rota).
-2. Na caixa **Cadastro**, clique na aba **CB SP** e depois em **Importar da Página CB SP**.
-3. Os hidrantes vão aparecer na lista, e uma barra mostra **"Geocodificando endereços · X/Y"**. Espere chegar ao total (leva 1 a 3 minutos). Os pontos vão surgindo no mapa.
-4. Em **Ações**, escolha a quantidade de hidrantes e clique em **Gerar Rota Otimizada**.
+2. A caixa **Estação de Bombeiros** já vem com **CBM · 03º GB · SGB 1 · SP - VILA FORMOSA**. Para outra estação, troque o CMD Regional, o GB, o SGB e a Estação.
+3. Os hidrantes pendentes de vistoria aparecem na lista, e uma barra mostra **"Localizando endereços · X/Y"**. Na primeira vez leva de alguns segundos a poucos minutos. Os pontos vão surgindo no mapa.
+4. Em **Rota**, escolha a quantidade de hidrantes e clique em **Gerar Rota Otimizada**.
 5. Clique em **Abrir Rota no Google Maps**. Se abriu a rota, está tudo certo! ✅
 
 No celular é só abrir o mesmo endereço. Dica: no navegador do celular, use "Adicionar à tela inicial" para ele aparecer como um app.
@@ -115,9 +115,8 @@ No celular é só abrir o mesmo endereço. Dica: no navegador do celular, use "A
 ## Coisas importantes de saber
 
 - **O plano gratuito do Render "dorme"** depois de 15 minutos sem ninguém usar. No próximo acesso, a primeira abertura demora **uns 30 a 60 segundos**. Depois fica rápido. Isso é normal, não é erro. Se quiser que fique sempre acordado, dá para pagar o plano Starter (cerca de US$ 7/mês) no próprio Render.
-- **Os dados ficam salvos no MongoDB Atlas**, então o app dormir ou reiniciar **não apaga** os hidrantes.
+- **Os hidrantes não ficam salvos no app**: eles são lidos do site do CB SP na hora. O MongoDB Atlas guarda só as coordenadas dos endereços, então depois que o app dorme ou reinicia o mapa volta a aparecer na hora.
 - **Atualizações automáticas:** toda vez que você mudar algo no GitHub (na branch `main`), o Render faz o deploy de novo sozinho.
-- **Não rode os testes automáticos (`pytest`) apontando para o endereço de produção.** Eles apagam todos os hidrantes.
 
 ---
 
@@ -125,12 +124,12 @@ No celular é só abrir o mesmo endereço. Dica: no navegador do celular, use "A
 
 | O que aparece | O que fazer |
 |---------------|-------------|
-| No log do Render: `KeyError: 'MONGO_URL'` | A variável não foi criada ou o nome está errado. Vá em **Environment** no Render, confira se o nome é exatamente `MONGO_URL` (maiúsculo) e clique em **Save, rebuild and deploy**. |
-| No log: `ServerSelectionTimeoutError` ou o app abre mas diz **"Falha ao carregar hidrantes"** | O banco está bloqueando o acesso. Refaça a **Parte 2, passo 7** (Network Access → `0.0.0.0/0`) e espere ficar Active. |
+| No log do Render: `MONGO_URL não definida` | O app funciona, mas sem guardar as coordenadas. Vá em **Environment** no Render, confira se o nome é exatamente `MONGO_URL` (maiúsculo) e clique em **Save, rebuild and deploy**. |
+| No log: `ServerSelectionTimeoutError` ou `geocache read failed` | O banco está bloqueando o acesso. Refaça a **Parte 2, passo 7** (Network Access → `0.0.0.0/0`) e espere ficar Active. |
 | No log: `bad auth` / `Authentication failed` | Senha errada no `MONGO_URL`. Confira se trocou o `<db_password>` inteiro (sem `<` `>`). Se a senha tiver símbolos, crie outra só com letras e números em **Database Access** no Atlas. |
 | No Render: `failed to read dockerfile` / `Dockerfile not found` | O `Dockerfile` não está na raiz do repositório. Refaça a Parte 1, passo 7. |
 | O site demora quase 1 minuto para abrir | É o plano gratuito acordando. Normal. |
-| A importação do CB SP dá erro | O site do Corpo de Bombeiros pode estar fora do ar. Tente de novo mais tarde. |
+| Aparece **"Página do CB SP indisponível"** | O site do Corpo de Bombeiros pode estar fora do ar. Clique em **Tentar novamente** mais tarde. |
 | O GPS não funciona | Confira se você permitiu a localização no navegador (ícone de cadeado ao lado do endereço). Sem GPS, o app usa o centro de SP como ponto de partida. |
 
 Para ver o log no Render: abra o serviço → menu **Logs**. Se travar, copie as últimas linhas vermelhas do log e mande para quem puder ajudar.

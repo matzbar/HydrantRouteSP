@@ -1,15 +1,30 @@
 import React, { useMemo, useState } from "react";
 import { Input } from "./ui/input";
-import { Button } from "./ui/button";
 import { Badge } from "./ui/badge";
-import { Trash2, Search, AlertTriangle } from "lucide-react";
+import { Search, AlertTriangle } from "lucide-react";
 
-const typeLabel = { subterraneo: "Subterrâneo", coluna: "Coluna" };
-const statusLabel = { possivel_de_uso: "Possível de uso", inoperante: "Inoperante", nao_localizado: "Não localizado" };
+export const typeLabel = { subterraneo: "Subterrâneo", coluna: "Coluna", bica: "Bica" };
+export const statusLabel = {
+  possivel_de_uso: "Possível de uso",
+  inoperante: "Inoperante",
+  nao_localizado: "Não localizado",
+  sem_vistoria: "Sem vistoria",
+};
 const statusShort = { possivel_de_uso: "OK", inoperante: "INOP", nao_localizado: "N/LOC" };
-const statusColor = { possivel_de_uso: "#10B981", inoperante: "#EF4444", nao_localizado: "#F59E0B" };
+export const statusColor = {
+  possivel_de_uso: "#10B981",
+  inoperante: "#EF4444",
+  nao_localizado: "#F59E0B",
+  sem_vistoria: "#94A3B8",
+  outro: "#94A3B8",
+};
+const typeStyle = {
+  subterraneo: { backgroundColor: "#1E3A8A33", color: "#93C5FD" },
+  coluna: { backgroundColor: "#5B21B633", color: "#C4B5FD" },
+  bica: { backgroundColor: "#0F766E33", color: "#5EEAD4" },
+};
 
-export default function HydrantTable({ hydrants, onDelete }) {
+export default function HydrantTable({ hydrants, emptyMessage = "Nenhum hidrante encontrado." }) {
   const [q, setQ] = useState("");
   const [tf, setTf] = useState("todos");
   const [sf, setSf] = useState("todos");
@@ -45,7 +60,7 @@ export default function HydrantTable({ hydrants, onDelete }) {
           />
         </div>
         <div className="flex gap-1.5 flex-wrap">
-          {["todos", "coluna", "subterraneo"].map((t) => (
+          {["todos", "coluna", "subterraneo", ...(hydrants.some((h) => h.type === "bica") ? ["bica"] : [])].map((t) => (
             <button
               key={t}
               type="button"
@@ -91,15 +106,15 @@ export default function HydrantTable({ hydrants, onDelete }) {
                 <th className="px-3 py-2 text-left">Município</th>
                 <th className="px-3 py-2 text-left">Últ. Vistoria</th>
                 <th className="px-3 py-2 text-left">Situação</th>
+                <th className="px-3 py-2 text-left">Vazão</th>
                 <th className="px-3 py-2 text-left">Setor</th>
-                <th className="px-3 py-2 text-right">Ação</th>
               </tr>
             </thead>
             <tbody>
               {filtered.length === 0 && (
                 <tr>
                   <td colSpan={8} className="px-3 py-10 text-center text-slate-500">
-                    Nenhum hidrante encontrado.
+                    {hydrants.length === 0 ? emptyMessage : "Nenhum hidrante encontrado com esses filtros."}
                   </td>
                 </tr>
               )}
@@ -110,21 +125,25 @@ export default function HydrantTable({ hydrants, onDelete }) {
                   data-testid={`hydrant-row-${h.code}`}
                 >
                   <td className="px-3 py-2 font-mono-t text-xs font-semibold text-white whitespace-nowrap">
-                    {h.code}
+                    {h.url ? (
+                      <a href={h.url} target="_blank" rel="noopener noreferrer" className="hover:underline" title="Ficha do hidrante no CB SP">
+                        {h.code}
+                      </a>
+                    ) : h.code}
+                    {h.location_source === "endereco" && (
+                      <span className="ml-1 text-amber-300/80" title="Posição aproximada pelo endereço">≈</span>
+                    )}
                     {!h.geocoded && (
-                      <AlertTriangle className="w-3 h-3 inline ml-1 text-amber-400" title="Não geocodificado" />
+                      <AlertTriangle className="w-3 h-3 inline ml-1 text-amber-400" aria-label="Fora do mapa" />
                     )}
                   </td>
                   <td className="px-3 py-2">
                     <Badge
                       variant="outline"
                       className="border-0 whitespace-nowrap"
-                      style={{
-                        backgroundColor: h.type === "subterraneo" ? "#1E3A8A33" : "#5B21B633",
-                        color: h.type === "subterraneo" ? "#93C5FD" : "#C4B5FD",
-                      }}
+                      style={typeStyle[h.type] || { backgroundColor: "#33415533", color: "#CBD5E1" }}
                     >
-                      {typeLabel[h.type]}
+                      {typeLabel[h.type] || h.type_label || "—"}
                     </Badge>
                   </td>
                   <td className="px-3 py-2 text-slate-300 text-xs max-w-[280px]">
@@ -138,28 +157,18 @@ export default function HydrantTable({ hydrants, onDelete }) {
                     <span className="inline-flex items-center gap-1.5 whitespace-nowrap">
                       <span
                         className="status-dot"
-                        style={{ backgroundColor: statusColor[h.status] }}
+                        style={{ backgroundColor: statusColor[h.status] || statusColor.outro }}
                       />
                       <span
                         className="text-xs font-mono-t uppercase tracking-wider"
-                        style={{ color: statusColor[h.status] }}
+                        style={{ color: statusColor[h.status] || statusColor.outro }}
                       >
-                        {statusLabel[h.status]}
+                        {statusLabel[h.status] || h.status_label || "—"}
                       </span>
                     </span>
                   </td>
+                  <td className="px-3 py-2 text-slate-400 text-xs whitespace-nowrap">{h.flow || "—"}</td>
                   <td className="px-3 py-2 text-slate-400 text-xs font-mono-t">{h.sector || "—"}</td>
-                  <td className="px-3 py-2 text-right">
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      onClick={() => onDelete(h.id)}
-                      data-testid={`delete-${h.code}`}
-                      className="text-slate-400 hover:text-red-400 hover:bg-[#1A2234]"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </Button>
-                  </td>
                 </tr>
               ))}
             </tbody>
@@ -168,6 +177,9 @@ export default function HydrantTable({ hydrants, onDelete }) {
       </div>
       <p className="text-xs text-slate-500 font-mono-t">
         {filtered.length} de {hydrants.length} hidrantes
+        {hydrants.some((h) => h.location_source === "endereco") && (
+          <span className="ml-3 text-slate-600">≈ posição aproximada pelo endereço (sem posição no mapa oficial)</span>
+        )}
       </p>
     </div>
   );
