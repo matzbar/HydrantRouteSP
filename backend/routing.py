@@ -13,6 +13,7 @@ Uma primeira parada fixa (`fixed_first`) nunca sai da posição 1.
 import math
 import time
 from typing import List, Optional, Sequence, Tuple
+from urllib.parse import quote
 
 Matrix = Sequence[Sequence[float]]
 
@@ -181,3 +182,13 @@ def optimize_open_path(cost: Matrix, n_select: Optional[int] = None, fixed_first
         if best is None or c < best[0] - 1e-9:
             best = (c, path)
     return best[1]
+
+
+def build_google_maps_url(origin: Tuple[float, float], stops: List[Tuple[float, float]]) -> str:
+    if not stops:
+        return ""
+    base = "https://www.google.com/maps/dir/?api=1&travelmode=driving"
+    url = f"{base}&origin={quote(f'{origin[0]},{origin[1]}')}&destination={quote(f'{stops[-1][0]},{stops[-1][1]}')}"
+    if len(stops) > 1:
+        url += f"&waypoints={quote('|'.join(f'{lat},{lon}' for lat, lon in stops[:-1]))}"
+    return url

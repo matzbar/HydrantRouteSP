@@ -1,0 +1,12 @@
+# Só o necessário para o build: evita copiar dependências e builds locais para a imagem.
+.git
+**/node_modules
+frontend/build
+**/__pycache__
+**/*.pyc
+**/.pytest_cache
+**/.venv
+**/venv
+**/.env
+**/.env.*
+.DS_Store
