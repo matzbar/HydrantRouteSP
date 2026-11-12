@@ -359,6 +359,9 @@ export default function Dashboard() {
             <p className="text-[11px] text-slate-500 leading-relaxed">
               A rota sempre parte da sua localização (GPS) e a ordem das paradas é otimizada pelo tempo real de carro entre os hidrantes (OSRM). Se você escolher uma primeira parada, ela fica fixa como parada 1.
             </p>
+            <p className="text-[11px] text-slate-600 leading-relaxed" data-testid="privacy-note">
+              Privacidade: sua localização fica só no navegador até você gerar a rota. Aí ela é enviada ao serviço de rotas (OSRM) e ao link do Google Maps, apenas para o cálculo, e não é armazenada pelo app.
+            </p>
           </div>
         </aside>
 

@@ -14,20 +14,21 @@ from pathlib import Path
 from typing import List, Optional
 from urllib.parse import urljoin
 
-from dotenv import load_dotenv
-from fastapi import APIRouter, FastAPI, HTTPException, Path as PathParam
+from fastapi import APIRouter, FastAPI, HTTPException, Path as PathParam, Request
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 from starlette.middleware.cors import CORSMiddleware
 
 import cb_sp
 import geocoding
 import osrm
-from config import CB_INDEX_URL, MAX_ROUTE_POINTS, OSRM_TABLE_MAX, STATION_CODE_PATTERN
+from config import (CB_INDEX_URL, MAX_ROUTE_POINTS, OSRM_TABLE_MAX, RATE_LIMIT_PER_MIN, ROUTE_RATE_LIMIT_PER_MIN,
+                    STATION_CODE_PATTERN)
+from ratelimit import RateLimiter
 from routing import (build_google_maps_url, estimated_matrices, haversine_km, nearest_neighbor, optimize_open_path,
                      path_cost)
 
 ROOT_DIR = Path(__file__).parent
-load_dotenv(ROOT_DIR / ".env")
 
 
 class RoutePoint(BaseModel):
@@ -85,6 +86,25 @@ async def lifespan(_app: FastAPI):
 
 app = FastAPI(title="HydrantRoute SP", lifespan=lifespan)
 api_router = APIRouter(prefix="/api")
+
+API_LIMITER = RateLimiter(RATE_LIMIT_PER_MIN)
+ROUTE_LIMITER = RateLimiter(ROUTE_RATE_LIMIT_PER_MIN)
+TOO_MANY = "Muitas requisições em pouco tempo. Aguarde alguns segundos e tente novamente."
+
+
+@app.middleware("http")
+async def rate_limit(request: Request, call_next):
+    """Protege a API (e os serviços externos que ela consulta) de uso abusivo, por IP."""
+    path = request.url.path
+    if path.startswith("/api"):
+        ip = request.client.host if request.client else "desconhecido"
+        limiters = [API_LIMITER] + ([ROUTE_LIMITER] if path == "/api/route/optimize" else [])
+        for limiter in limiters:
+            wait = limiter.hit(ip)
+            if wait is not None:
+                return JSONResponse(status_code=429, content={"detail": TOO_MANY},
+                                    headers={"Retry-After": str(int(wait) + 1)})
+    return await call_next(request)
 
 
 @api_router.get("/")

@@ -1,10 +1,19 @@
 """Endereços dos serviços externos e limites do app."""
 import logging
+import os
+from pathlib import Path
+
+from dotenv import load_dotenv
+
+load_dotenv(Path(__file__).parent / ".env")
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
 logger = logging.getLogger("hydrantroute")
+# O httpx registra a URL de cada requisição em INFO; na do OSRM vai a localização do usuário. Não registrar.
+logging.getLogger("httpx").setLevel(logging.WARNING)
 
-USER_AGENT = "Mozilla/5.0 (compatible; HydrantRouteBR/1.0)"
+# Identificação nas requisições a serviços externos (exigida pela política do Nominatim/OpenStreetMap).
+USER_AGENT = "HydrantRouteSP/1.0 (+https://github.com/matzbar/HydrantRouteSP)"
 DEFAULT_STATE = "SP"
 
 # Site do Corpo de Bombeiros: índice de estações e página de cada estação.
@@ -18,10 +27,16 @@ NOMINATIM_URL = "https://nominatim.openstreetmap.org/search"
 PHOTON_URL = "https://photon.komoot.io/api/"
 ARCGIS_URL = "https://geocode.arcgis.com/arcgis/rest/services/World/GeocodeServer/findAddressCandidates"
 
-# Roteamento.
-OSRM_URL = "https://router.project-osrm.org/route/v1/driving"
-OSRM_TABLE_URL = "https://router.project-osrm.org/table/v1/driving"
-OSRM_TABLE_MAX = 100  # limite de coordenadas por matriz no servidor público do OSRM
+# Roteamento. O servidor público do OSRM é para uso leve; para trocar por um próprio ou comercial,
+# defina OSRM_BASE_URL (e OSRM_TABLE_MAX, se o novo servidor aceitar matrizes maiores).
+OSRM_BASE_URL = os.environ.get("OSRM_BASE_URL", "https://router.project-osrm.org").rstrip("/")
+OSRM_URL = f"{OSRM_BASE_URL}/route/v1/driving"
+OSRM_TABLE_URL = f"{OSRM_BASE_URL}/table/v1/driving"
+OSRM_TABLE_MAX = int(os.environ.get("OSRM_TABLE_MAX", "100"))  # limite de coordenadas por matriz
+
+# Proteção contra abuso: requisições por minuto por IP.
+RATE_LIMIT_PER_MIN = int(os.environ.get("RATE_LIMIT_PER_MIN", "120"))
+ROUTE_RATE_LIMIT_PER_MIN = int(os.environ.get("ROUTE_RATE_LIMIT_PER_MIN", "20"))  # cálculo de rota (usa o OSRM)
 
 STATION_CODE_PATTERN = r"^\d{9}$"
 INDEX_TTL_S = 60 * 60  # o índice de estações muda pouco

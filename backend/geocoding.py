@@ -1,6 +1,8 @@
 """Localização pelo endereço (alternativa à posição oficial): ArcGIS → Photon → Nominatim.
 
-Os resultados ficam em cache na memória e, se houver MONGO_URL, também no MongoDB.
+Os resultados ficam em cache na memória. Se houver MONGO_URL, os do Photon e do Nominatim (dados abertos do
+OpenStreetMap) também vão para o MongoDB. Os do ArcGIS World ficam só na memória: os termos dele não
+permitem guardar resultados sem conta paga.
 """
 import asyncio
 import difflib
@@ -12,6 +14,9 @@ import httpx
 
 from cb_sp import fold
 from config import ARCGIS_URL, DEFAULT_STATE, NOMINATIM_URL, PHOTON_URL, USER_AGENT, logger
+
+
+PERSISTABLE_PROVIDERS = {"photon", "nominatim"}  # dados do OpenStreetMap (ODbL): podem ser guardados
 
 
 class GeoCache:
@@ -44,7 +49,9 @@ class GeoCache:
         if self.coll is None:
             return None
         try:
-            doc = await self.coll.find_one({"key": key}, {"_id": 0, "lat": 1, "lon": 1})
+            # Só registros com origem conhecida e que podem ser guardados (ignora os antigos, sem "provider").
+            doc = await self.coll.find_one({"key": key, "provider": {"$in": sorted(PERSISTABLE_PROVIDERS)}},
+                                           {"_id": 0, "lat": 1, "lon": 1})
         except Exception as exc:
             logger.warning("geocache read failed: %s", exc)
             return None
@@ -55,10 +62,12 @@ class GeoCache:
 
     async def set(self, key: str, coords: dict) -> None:
         self.mem[key] = {"lat": coords["lat"], "lon": coords["lon"]}
-        if self.coll is None:
+        provider = coords.get("provider")
+        if self.coll is None or provider not in PERSISTABLE_PROVIDERS:
             return
         try:
-            await self.coll.update_one({"key": key}, {"$set": {"key": key, **self.mem[key]}}, upsert=True)
+            doc = {"key": key, **self.mem[key], "provider": provider}
+            await self.coll.update_one({"key": key}, {"$set": doc}, upsert=True)
         except Exception as exc:  # inclui DuplicateKeyError de upserts concorrentes
             logger.warning("geocache write failed: %s", exc)
 
@@ -164,15 +173,15 @@ async def geocode_remote(address: str, municipality: str) -> Optional[dict]:
             for q in arc_queries:
                 res = await arcgis_query(hc, f"{q}, {municipality}, {DEFAULT_STATE}")
                 if res:
-                    return res
+                    return {**res, "provider": "arcgis"}
             found = [r for r in [await photon_query(hc, c, municipality) for c in candidates] if r]
             if found:
                 best = next((r for r in found if r["score"] >= 0.85), max(found, key=lambda r: r["score"]))
-                return {"lat": best["lat"], "lon": best["lon"]}
+                return {"lat": best["lat"], "lon": best["lon"], "provider": "photon"}
             for c in candidates:
                 res = await nominatim_query(hc, f"{c}, {municipality}, {DEFAULT_STATE}, Brasil")
                 if res:
-                    return res
+                    return {**res, "provider": "nominatim"}
     except Exception as exc:
         logger.warning("geocode failed for %s: %s", address, exc)
     return None
