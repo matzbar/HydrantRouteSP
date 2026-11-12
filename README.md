@@ -21,10 +21,10 @@ backend/
   ratelimit.py   limite de requisições por IP
   config.py      endereços dos serviços e limites
   tests/         testes unitários (sem rede nem banco)
-frontend/        React (CRA + craco) + Leaflet + Tailwind
+frontend/        React (Vite) + Leaflet + Tailwind
 ```
 
-Em produção é **um único serviço**: o `Dockerfile` compila o React e o FastAPI serve o site e a API (`/api`) na mesma porta. Não é preciso configurar CORS nem `REACT_APP_BACKEND_URL`.
+Em produção é **um único serviço**: o `Dockerfile` compila o React e o FastAPI serve o site e a API (`/api`) na mesma porta. Não é preciso configurar CORS nem `VITE_BACKEND_URL`.
 
 ## Variáveis de ambiente
 
@@ -69,12 +69,14 @@ cp .env.example .env               # opcional: ajuste MONGO_URL
 pip install -r requirements-dev.txt
 uvicorn server:app --reload --port 8001
 
-# Frontend (em outro terminal)
+# Frontend (em outro terminal): http://localhost:3000, com /api redirecionado ao backend na 8001
 cd frontend
 corepack enable
 yarn install --frozen-lockfile
-REACT_APP_BACKEND_URL=http://localhost:8001 yarn start
+yarn dev
 ```
+
+Outros comandos do frontend: `yarn lint` (ESLint) e `yarn build` (gera `frontend/build`).
 
 Alternativa: rode `yarn build` no frontend e só o `uvicorn` acima. O backend serve `frontend/build` automaticamente.
 
@@ -90,7 +92,7 @@ pytest
 
 As dependências têm versões fixas (`requirements.txt` e `frontend/yarn.lock`). Ao atualizar, rode `pytest` e `pip-audit -r requirements.txt`.
 
-O GitHub Actions ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)) roda os testes, o `pip-audit` e o build do frontend em todo pull request.
+O GitHub Actions ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)) roda os testes, o `pip-audit`, o lint e o build do frontend em todo pull request.
 
 ## Privacidade e serviços externos
 

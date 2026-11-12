@@ -6,8 +6,7 @@ WORKDIR /app/frontend
 COPY frontend/package.json frontend/yarn.lock ./
 RUN corepack enable && yarn install --frozen-lockfile --network-timeout 600000
 COPY frontend/ ./
-# Sem REACT_APP_BACKEND_URL o frontend chama /api na mesma origem.
-ENV GENERATE_SOURCEMAP=false
+# Sem VITE_BACKEND_URL o frontend chama /api na mesma origem.
 RUN yarn build
 
 # ---------- 2) Backend ----------

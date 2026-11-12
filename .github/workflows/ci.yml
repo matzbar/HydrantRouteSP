@@ -24,7 +24,7 @@ jobs:
       - run: pip-audit -r requirements.txt
 
   frontend:
-    name: Frontend (build)
+    name: Frontend (lint + build)
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -36,7 +36,5 @@ jobs:
           node-version: "24"
       - run: corepack enable
       - run: yarn install --frozen-lockfile
+      - run: yarn lint
       - run: yarn build
-        env:
-          CI: "true"
-          GENERATE_SOURCEMAP: "false"
