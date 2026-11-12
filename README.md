@@ -98,4 +98,10 @@ O GitHub Actions ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)) roda o
 
 - A localização do usuário (GPS) só sai do navegador ao gerar a rota: vai ao OSRM e ao link do Google Maps. O app não a grava nem a registra em log.
 - Resultados do geocodificador ArcGIS World ficam só na memória (os termos dele não permitem guardá-los sem conta paga). Os do Photon/Nominatim (OpenStreetMap) podem ir para o MongoDB.
+- Bancos criados por versões antigas podem ter registros sem origem no `geocache` (parte do ArcGIS World) e a coleção `hydrants` do cadastro antigo. O script `backend/scripts/limpar_banco.py` remove os dois. Ele só simula por padrão; use `--aplicar` para apagar:
+
+  ```bash
+  docker compose run --rm -e MONGO_URL='mongodb+srv://...' -e DB_NAME=hydrantroute \
+      app python scripts/limpar_banco.py            # simulação; depois repita com --aplicar
+  ```
 - As requisições se identificam com o User-Agent `HydrantRouteSP/1.0 (+https://github.com/matzbar/HydrantRouteSP)`, como pede a política do Nominatim.
