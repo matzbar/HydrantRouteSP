@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { Input } from "./ui/input";
 import { Crosshair, MapPin, Search, X } from "lucide-react";
 

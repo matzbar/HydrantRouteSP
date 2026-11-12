@@ -1,7 +1,7 @@
 import axios from "axios";
 
-// Empty = same origin (frontend served by the backend). Set REACT_APP_BACKEND_URL when hosting them separately.
-const BACKEND_URL = (process.env.REACT_APP_BACKEND_URL || "").replace(/\/$/, "");
+// Vazio = mesma origem (o backend serve o frontend). Defina VITE_BACKEND_URL só se hospedá-los separados.
+const BACKEND_URL = (import.meta.env.VITE_BACKEND_URL || "").replace(/\/$/, "");
 export const API = `${BACKEND_URL}/api`;
 
 export const api = axios.create({ baseURL: API });
