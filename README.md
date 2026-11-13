@@ -98,6 +98,12 @@ As dependências têm versões fixas (`requirements.txt` e `frontend/yarn.lock`)
 
 O GitHub Actions ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)) roda os testes, o `pip-audit`, o lint e o build do frontend em todo pull request.
 
+## Segurança
+
+- Todas as respostas levam cabeçalhos de segurança (`backend/security.py`): CSP (scripts só do próprio site; estilos, fontes e imagens só das origens usadas: Google Fonts e mapas do OpenStreetMap), `X-Frame-Options: DENY`, `X-Content-Type-Options`, `Referrer-Policy`, `Permissions-Policy` e, em HTTPS, `Strict-Transport-Security`. Ao adicionar um recurso externo novo ao frontend, inclua a origem na CSP.
+- No Docker, o app roda com um usuário sem privilégios (`app`), e um `HEALTHCHECK` consulta `/api/` a cada 30 s.
+- Limite de requisições por IP (`backend/ratelimit.py`), com o IP lido de forma que o cliente não consiga falsificar.
+
 ## Privacidade e serviços externos
 
 - A localização do usuário (GPS) só sai do navegador ao gerar a rota: vai ao OSRM e ao link do Google Maps. O app não a grava nem a registra em log.

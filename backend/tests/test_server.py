@@ -448,3 +448,29 @@ def test_status_reports_diagnostics_without_ips(client):
     assert d["status"] == "ok" and "build" in d
     assert d["client_ip"]["forwarded_for_entries"] == 2
     assert "6.6.6.6" not in str(d) and "200.1.1.1" not in str(d)
+
+
+# ----------------------------- Cabeçalhos de segurança -----------------------------
+def test_security_headers_on_every_response(client):
+    for r in (client.get("/api/"), client.get("/api/nao-existe"),
+              client.post("/api/route/optimize", json={"origin_lat": 999})):
+        h = r.headers
+        assert "script-src 'self'" in h["content-security-policy"]
+        assert "frame-ancestors 'none'" in h["content-security-policy"]
+        assert "https://*.tile.openstreetmap.org" in h["content-security-policy"]
+        assert h["x-frame-options"] == "DENY" and h["x-content-type-options"] == "nosniff"
+        assert h["referrer-policy"] == "strict-origin-when-cross-origin"
+        assert "geolocation=(self)" in h["permissions-policy"]
+        assert "strict-transport-security" not in h  # HTTP local: sem HSTS
+
+
+def test_hsts_only_over_https(client):
+    r = client.get("/api/", headers={"X-Forwarded-Proto": "https"})
+    assert r.headers["strict-transport-security"] == "max-age=31536000"
+
+
+def test_security_headers_on_rate_limited_response(client):
+    for _ in range(server.API_LIMITER.limit):
+        client.get("/api/")
+    r = client.get("/api/")
+    assert r.status_code == 429 and r.headers["x-frame-options"] == "DENY"
