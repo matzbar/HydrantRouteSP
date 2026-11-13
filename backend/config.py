@@ -37,9 +37,15 @@ OSRM_TABLE_MAX = int(os.environ.get("OSRM_TABLE_MAX", "100"))  # limite de coord
 # Proteção contra abuso: requisições por minuto por IP.
 RATE_LIMIT_PER_MIN = int(os.environ.get("RATE_LIMIT_PER_MIN", "120"))
 ROUTE_RATE_LIMIT_PER_MIN = int(os.environ.get("ROUTE_RATE_LIMIT_PER_MIN", "20"))  # cálculo de rota (usa o OSRM)
-# Quantos proxies confiáveis acrescentam IPs ao X-Forwarded-For (veja ratelimit.client_ip). No Render a cadeia é
-# Cloudflare → Render (2); o Render define RENDER=true. Fora dele, 0: vale o IP da conexão e o cabeçalho é ignorado.
-TRUSTED_PROXY_HOPS = int(os.environ.get("TRUSTED_PROXY_HOPS", "2" if os.environ.get("RENDER") else "0"))
+# IP do usuário para o limite de requisições (veja ratelimit.client_ip). O Render define RENDER=true.
+ON_RENDER = bool(os.environ.get("RENDER"))
+# Cabeçalho com o IP do visitante escrito por um proxy confiável. No Render, que fica atrás da Cloudflare, é o
+# CF-Connecting-IP: a Cloudflare o reescreve na borda, então o cliente não consegue falsificá-lo.
+CLIENT_IP_HEADER = os.environ.get("CLIENT_IP_HEADER", "cf-connecting-ip" if ON_RENDER else "").strip().lower()
+# Alternativa: quantos proxies confiáveis acrescentam IPs ao X-Forwarded-For. Fora do Render, 0: vale o IP da conexão.
+TRUSTED_PROXY_HOPS = int(os.environ.get("TRUSTED_PROXY_HOPS", "2" if ON_RENDER else "0"))
+# Versão em execução (o Render define RENDER_GIT_COMMIT), exibida no endpoint de status.
+BUILD_COMMIT = (os.environ.get("RENDER_GIT_COMMIT") or os.environ.get("GIT_COMMIT") or "")[:7] or None
 
 STATION_CODE_PATTERN = r"^\d{9}$"
 INDEX_TTL_S = 60 * 60  # o índice de estações muda pouco

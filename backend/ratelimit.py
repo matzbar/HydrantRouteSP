@@ -4,13 +4,19 @@ from collections import OrderedDict, deque
 from typing import Deque, Mapping, Optional
 
 
-def client_ip(headers: Mapping[str, str], peer: Optional[str], trusted_hops: int) -> str:
+def client_ip(headers: Mapping[str, str], peer: Optional[str], trusted_hops: int, ip_header: str = "") -> str:
     """IP do usuário, sem confiar no que o próprio cliente pode escrever.
 
-    Cada proxy confiável acrescenta, à direita do X-Forwarded-For, o IP de quem falou com ele. O que o cliente
-    mandar fica à esquerda e é ignorado. No Render a cadeia é Cloudflare → Render, então o IP real é o 2º a
-    contar da direita (trusted_hops=2). Sem proxy na frente (trusted_hops=0), vale o IP da conexão.
+    1. Se houver um cabeçalho escrito por um proxy confiável (ip_header; no Render, o CF-Connecting-IP, que a
+       Cloudflare reescreve na borda), vale ele.
+    2. Senão, cada proxy confiável acrescenta, à direita do X-Forwarded-For, o IP de quem falou com ele. O que o
+       cliente mandar fica à esquerda e é ignorado: vale a entrada a trusted_hops posições da direita.
+    3. Sem proxy na frente (trusted_hops=0), vale o IP da conexão.
     """
+    if ip_header:
+        value = headers.get(ip_header, "").split(",")[0].strip()
+        if value:
+            return value
     if trusted_hops > 0:
         chain = [p.strip() for p in headers.get("x-forwarded-for", "").split(",") if p.strip()]
         if len(chain) >= trusted_hops:
