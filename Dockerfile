@@ -15,10 +15,16 @@ WORKDIR /app
 ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 PORT=8000
 COPY backend/requirements.txt backend/requirements.txt
 RUN pip install --no-cache-dir -r backend/requirements.txt
+# Usuário sem privilégios: o app não roda como root. Os arquivos ficam com o root (só leitura para o app).
+RUN useradd --system --uid 10001 --no-create-home --shell /usr/sbin/nologin app
 COPY backend/ backend/
 COPY --from=frontend /app/frontend/build frontend/build
 WORKDIR /app/backend
+USER app
 EXPOSE 8000
+# O Docker marca o contêiner como "unhealthy" se a API parar de responder.
+HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
+    CMD python -c "import os, urllib.request; urllib.request.urlopen('http://127.0.0.1:%s/api/' % os.environ.get('PORT', '8000'), timeout=4)"
 # 1 worker: caches, fila de localização e limite de requisições ficam na memória do processo.
 # Sem --forwarded-allow-ips='*': o IP do usuário é lido pelo app só das entradas do X-Forwarded-For escritas pelos
 # proxies confiáveis (TRUSTED_PROXY_HOPS, em config.py), e nunca da parte que o próprio cliente pode inventar.

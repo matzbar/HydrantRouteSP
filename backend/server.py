@@ -25,6 +25,7 @@ import osrm
 from config import (BUILD_COMMIT, CB_INDEX_URL, CLIENT_IP_HEADER, MAX_ROUTE_POINTS, ON_RENDER, OSRM_TABLE_MAX,
                     RATE_LIMIT_PER_MIN, ROUTE_RATE_LIMIT_PER_MIN, STATION_CODE_PATTERN, TRUSTED_PROXY_HOPS)
 from ratelimit import RateLimiter, client_ip
+from security import security_headers
 from routing import (build_google_maps_url, estimated_matrices, haversine_km, nearest_neighbor, optimize_open_path,
                      path_cost)
 
@@ -106,6 +107,19 @@ async def rate_limit(request: Request, call_next):
                 return JSONResponse(status_code=429, content={"detail": TOO_MANY},
                                     headers={"Retry-After": str(int(wait) + 1)})
     return await call_next(request)
+
+
+@app.middleware("http")
+async def add_security_headers(request: Request, call_next):
+    """Cabeçalhos de segurança (CSP, anti-iframe, HSTS em HTTPS...) em todas as respostas, inclusive as de erro.
+
+    Fica registrado depois do limitador para ser o mais externo (o último registrado roda primeiro) e assim
+    cobrir também as respostas 429.
+    """
+    response = await call_next(request)
+    for name, value in security_headers(request.headers.get("x-forwarded-proto", request.url.scheme)).items():
+        response.headers.setdefault(name, value)
+    return response
 
 
 @api_router.get("/")
