@@ -40,6 +40,7 @@ Todas opcionais. Modelo em [`backend/.env.example`](backend/.env.example).
 | `OSRM_TABLE_MAX` | `100`         | Máximo de pontos por matriz aceito pelo seu OSRM |
 | `RATE_LIMIT_PER_MIN` | `120`     | Requisições por minuto por IP na API |
 | `ROUTE_RATE_LIMIT_PER_MIN` | `20` | Cálculos de rota por minuto por IP |
+| `TRUSTED_PROXY_HOPS` | `2` no Render, `0` fora | Quantos proxies confiáveis acrescentam IPs ao `X-Forwarded-For` (Render: Cloudflare + Render). Com `0`, vale o IP da conexão |
 
 ## Rodar com Docker (local ou VPS)
 

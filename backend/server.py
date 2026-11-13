@@ -23,8 +23,8 @@ import cb_sp
 import geocoding
 import osrm
 from config import (CB_INDEX_URL, MAX_ROUTE_POINTS, OSRM_TABLE_MAX, RATE_LIMIT_PER_MIN, ROUTE_RATE_LIMIT_PER_MIN,
-                    STATION_CODE_PATTERN)
-from ratelimit import RateLimiter
+                    STATION_CODE_PATTERN, TRUSTED_PROXY_HOPS)
+from ratelimit import RateLimiter, client_ip
 from routing import (build_google_maps_url, estimated_matrices, haversine_km, nearest_neighbor, optimize_open_path,
                      path_cost)
 
@@ -97,7 +97,7 @@ async def rate_limit(request: Request, call_next):
     """Protege a API (e os serviços externos que ela consulta) de uso abusivo, por IP."""
     path = request.url.path
     if path.startswith("/api"):
-        ip = request.client.host if request.client else "desconhecido"
+        ip = client_ip(request.headers, request.client.host if request.client else None, TRUSTED_PROXY_HOPS)
         limiters = [API_LIMITER] + ([ROUTE_LIMITER] if path == "/api/route/optimize" else [])
         for limiter in limiters:
             wait = limiter.hit(ip)
