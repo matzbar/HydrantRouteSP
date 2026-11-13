@@ -40,7 +40,8 @@ Todas opcionais. Modelo em [`backend/.env.example`](backend/.env.example).
 | `OSRM_TABLE_MAX` | `100`         | Máximo de pontos por matriz aceito pelo seu OSRM |
 | `RATE_LIMIT_PER_MIN` | `120`     | Requisições por minuto por IP na API |
 | `ROUTE_RATE_LIMIT_PER_MIN` | `20` | Cálculos de rota por minuto por IP |
-| `TRUSTED_PROXY_HOPS` | `2` no Render, `0` fora | Quantos proxies confiáveis acrescentam IPs ao `X-Forwarded-For` (Render: Cloudflare + Render). Com `0`, vale o IP da conexão |
+| `CLIENT_IP_HEADER` | `cf-connecting-ip` no Render, vazio fora | Cabeçalho com o IP do usuário escrito por um proxy confiável (a Cloudflare reescreve o `CF-Connecting-IP`; o cliente não consegue falsificá-lo) |
+| `TRUSTED_PROXY_HOPS` | `2` no Render, `0` fora | Alternativa ao cabeçalho acima: quantos proxies confiáveis acrescentam IPs ao `X-Forwarded-For`. Com `0`, vale o IP da conexão |
 
 ## Rodar com Docker (local ou VPS)
 
@@ -90,6 +91,8 @@ cd backend
 pip install -r requirements-dev.txt
 pytest
 ```
+
+O endpoint de status (`GET /api/`) mostra a versão em execução (`build`) e como o IP do usuário está sendo lido (`client_ip`), sem exibir nenhum IP.
 
 As dependências têm versões fixas (`requirements.txt` e `frontend/yarn.lock`). Ao atualizar, rode `pytest` e `pip-audit -r requirements.txt`.
 

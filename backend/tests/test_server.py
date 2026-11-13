@@ -418,3 +418,33 @@ def test_limiter_memory_is_bounded():
         lim.hit(f"ip-{i}")
     assert len(lim.hits) == 100
     assert "ip-999" in lim.hits and "ip-0" not in lim.hits  # guarda os mais recentes
+
+
+@pytest.mark.parametrize("headers,expected", [
+    ({"cf-connecting-ip": "200.1.1.1", "x-forwarded-for": "6.6.6.6"}, "200.1.1.1"),  # Cloudflare tem prioridade
+    ({"cf-connecting-ip": " 200.1.1.1 "}, "200.1.1.1"),
+    ({"x-forwarded-for": "6.6.6.6, 200.1.1.1, 104.22.17.40"}, "200.1.1.1"),         # sem o cabeçalho: cadeia
+    ({}, "10.0.0.1"),                                                                 # nada: IP da conexão
+])
+def test_client_ip_prefers_trusted_header(headers, expected):
+    from ratelimit import client_ip
+
+    assert client_ip(headers, "10.0.0.1", 2, "cf-connecting-ip") == expected
+
+
+def test_spoofed_headers_do_not_bypass_limit_behind_cloudflare(client, monkeypatch):
+    """Simula o Render: o cliente troca o X-Forwarded-For a cada chamada, mas a Cloudflare escreve o IP real."""
+    monkeypatch.setattr(server, "CLIENT_IP_HEADER", "cf-connecting-ip")
+    monkeypatch.setattr(server, "TRUSTED_PROXY_HOPS", 2)
+    limit = server.API_LIMITER.limit
+    codes = [client.get("/api/", headers={"X-Forwarded-For": f"6.6.{i // 250}.{i % 250}",
+                                          "CF-Connecting-IP": "200.1.1.1"}).status_code
+             for i in range(limit + 5)]
+    assert codes.count(200) == limit and codes.count(429) == 5
+
+
+def test_status_reports_diagnostics_without_ips(client):
+    d = client.get("/api/", headers={"X-Forwarded-For": "6.6.6.6, 200.1.1.1"}).json()
+    assert d["status"] == "ok" and "build" in d
+    assert d["client_ip"]["forwarded_for_entries"] == 2
+    assert "6.6.6.6" not in str(d) and "200.1.1.1" not in str(d)

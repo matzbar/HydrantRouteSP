@@ -22,8 +22,8 @@ from starlette.middleware.cors import CORSMiddleware
 import cb_sp
 import geocoding
 import osrm
-from config import (CB_INDEX_URL, MAX_ROUTE_POINTS, OSRM_TABLE_MAX, RATE_LIMIT_PER_MIN, ROUTE_RATE_LIMIT_PER_MIN,
-                    STATION_CODE_PATTERN, TRUSTED_PROXY_HOPS)
+from config import (BUILD_COMMIT, CB_INDEX_URL, CLIENT_IP_HEADER, MAX_ROUTE_POINTS, ON_RENDER, OSRM_TABLE_MAX,
+                    RATE_LIMIT_PER_MIN, ROUTE_RATE_LIMIT_PER_MIN, STATION_CODE_PATTERN, TRUSTED_PROXY_HOPS)
 from ratelimit import RateLimiter, client_ip
 from routing import (build_google_maps_url, estimated_matrices, haversine_km, nearest_neighbor, optimize_open_path,
                      path_cost)
@@ -97,7 +97,8 @@ async def rate_limit(request: Request, call_next):
     """Protege a API (e os serviços externos que ela consulta) de uso abusivo, por IP."""
     path = request.url.path
     if path.startswith("/api"):
-        ip = client_ip(request.headers, request.client.host if request.client else None, TRUSTED_PROXY_HOPS)
+        ip = client_ip(request.headers, request.client.host if request.client else None, TRUSTED_PROXY_HOPS,
+                       CLIENT_IP_HEADER)
         limiters = [API_LIMITER] + ([ROUTE_LIMITER] if path == "/api/route/optimize" else [])
         for limiter in limiters:
             wait = limiter.hit(ip)
@@ -108,8 +109,21 @@ async def rate_limit(request: Request, call_next):
 
 
 @api_router.get("/")
-async def root():
-    return {"message": "HydrantRoute SP API", "status": "ok"}
+async def root(request: Request):
+    """Status da API, com a versão em execução e um diagnóstico de como o IP do usuário é lido (sem exibir IPs)."""
+    forwarded = [p for p in request.headers.get("x-forwarded-for", "").split(",") if p.strip()]
+    return {
+        "message": "HydrantRoute SP API",
+        "status": "ok",
+        "build": BUILD_COMMIT,
+        "client_ip": {
+            "render": ON_RENDER,
+            "header": CLIENT_IP_HEADER or None,
+            "header_present": bool(CLIENT_IP_HEADER and request.headers.get(CLIENT_IP_HEADER)),
+            "trusted_proxy_hops": TRUSTED_PROXY_HOPS,
+            "forwarded_for_entries": len(forwarded),
+        },
+    }
 
 
 @api_router.get("/stations")
