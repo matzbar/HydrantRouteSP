@@ -19,5 +19,7 @@ COPY backend/ backend/
 COPY --from=frontend /app/frontend/build frontend/build
 WORKDIR /app/backend
 EXPOSE 8000
-# 1 worker: o estado da geocodificação em segundo plano fica em memória do processo.
-CMD ["sh", "-c", "uvicorn server:app --host 0.0.0.0 --port ${PORT} --proxy-headers --forwarded-allow-ips='*'"]
+# 1 worker: caches, fila de localização e limite de requisições ficam na memória do processo.
+# Sem --forwarded-allow-ips='*': o IP do usuário é lido pelo app só das entradas do X-Forwarded-For escritas pelos
+# proxies confiáveis (TRUSTED_PROXY_HOPS, em config.py), e nunca da parte que o próprio cliente pode inventar.
+CMD ["sh", "-c", "uvicorn server:app --host 0.0.0.0 --port ${PORT}"]

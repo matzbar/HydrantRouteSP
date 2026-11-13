@@ -380,3 +380,41 @@ def test_osrm_errors_do_not_log_coordinates(caplog):
         httpx.AsyncClient = real_client
     assert "HTTP 502" in caplog.text
     assert "-23.5612" not in caplog.text and "-46.6558" not in caplog.text
+
+
+# ----------------------------- IP do usuário atrás de proxies -----------------------------
+@pytest.mark.parametrize("xff,peer,hops,expected", [
+    (None, "1.2.3.4", 0, "1.2.3.4"),                                  # sem proxy: IP da conexão
+    ("6.6.6.6", "1.2.3.4", 0, "1.2.3.4"),                             # sem proxy: cabeçalho ignorado
+    ("200.1.1.1, 104.22.17.40", "10.0.0.1", 2, "200.1.1.1"),          # Render: real, Cloudflare
+    ("6.6.6.6, 200.1.1.1, 104.22.17.40", "10.0.0.1", 2, "200.1.1.1"),  # falso à esquerda é ignorado
+    ("1.1.1.1, 2.2.2.2, 200.1.1.1, 104.22.17.40", "10.0.0.1", 2, "200.1.1.1"),
+    ("104.22.17.40", "10.0.0.1", 2, "10.0.0.1"),                      # cadeia curta: não confia
+    ("200.1.1.1", "10.0.0.1", 1, "200.1.1.1"),
+])
+def test_client_ip(xff, peer, hops, expected):
+    from ratelimit import client_ip
+
+    headers = {"x-forwarded-for": xff} if xff else {}
+    assert client_ip(headers, peer, hops) == expected
+
+
+def test_spoofed_forwarded_for_does_not_bypass_limit(client, monkeypatch):
+    """Simula o Render (2 proxies): trocar o IP falso a cada chamada não escapa do limite."""
+    monkeypatch.setattr(server, "TRUSTED_PROXY_HOPS", 2)
+    limit = server.API_LIMITER.limit
+    codes = [client.get("/api/", headers={"X-Forwarded-For": f"6.6.{i // 250}.{i % 250}, 200.1.1.1, 104.22.17.40"}).status_code
+             for i in range(limit + 5)]
+    assert codes.count(200) == limit and codes.count(429) == 5
+    # outro usuário de verdade (outro IP escrito pela Cloudflare) continua sendo atendido
+    assert client.get("/api/", headers={"X-Forwarded-For": "200.9.9.9, 104.22.17.40"}).status_code == 200
+
+
+def test_limiter_memory_is_bounded():
+    from ratelimit import RateLimiter
+
+    lim = RateLimiter(5, max_keys=100)
+    for i in range(1000):
+        lim.hit(f"ip-{i}")
+    assert len(lim.hits) == 100
+    assert "ip-999" in lim.hits and "ip-0" not in lim.hits  # guarda os mais recentes

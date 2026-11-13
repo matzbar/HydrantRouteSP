@@ -37,6 +37,9 @@ OSRM_TABLE_MAX = int(os.environ.get("OSRM_TABLE_MAX", "100"))  # limite de coord
 # Proteção contra abuso: requisições por minuto por IP.
 RATE_LIMIT_PER_MIN = int(os.environ.get("RATE_LIMIT_PER_MIN", "120"))
 ROUTE_RATE_LIMIT_PER_MIN = int(os.environ.get("ROUTE_RATE_LIMIT_PER_MIN", "20"))  # cálculo de rota (usa o OSRM)
+# Quantos proxies confiáveis acrescentam IPs ao X-Forwarded-For (veja ratelimit.client_ip). No Render a cadeia é
+# Cloudflare → Render (2); o Render define RENDER=true. Fora dele, 0: vale o IP da conexão e o cabeçalho é ignorado.
+TRUSTED_PROXY_HOPS = int(os.environ.get("TRUSTED_PROXY_HOPS", "2" if os.environ.get("RENDER") else "0"))
 
 STATION_CODE_PATTERN = r"^\d{9}$"
 INDEX_TTL_S = 60 * 60  # o índice de estações muda pouco
