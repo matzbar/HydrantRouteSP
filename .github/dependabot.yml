@@ -1,0 +1,47 @@
+# Dependabot: abre pull requests com atualizações de dependências. Cada PR passa pelo CI
+# (testes, pip-audit, lint, build e teste da imagem Docker) antes de qualquer merge.
+#
+# - Atualizações menores (minor/patch) vêm agrupadas num PR por tipo; versões novas maiores (major)
+#   vêm em PRs separados, para revisar com calma.
+# - cooldown: só sugere versões publicadas há pelo menos 14 dias (evita versões recém-lançadas com
+#   problema ou comprometidas). Correções de segurança não esperam esse prazo.
+version: 2
+updates:
+  - package-ecosystem: pip
+    directory: /backend
+    schedule: { interval: weekly, day: monday, time: "06:00", timezone: America/Sao_Paulo }
+    cooldown: { default-days: 14 }
+    open-pull-requests-limit: 5
+    commit-message: { prefix: "deps(backend)" }
+    groups:
+      backend-menores:
+        update-types: [minor, patch]
+
+  - package-ecosystem: npm # o frontend usa yarn (yarn.lock); o Dependabot trata pelo ecossistema npm
+    directory: /frontend
+    schedule: { interval: weekly, day: monday, time: "06:00", timezone: America/Sao_Paulo }
+    cooldown: { default-days: 14 }
+    open-pull-requests-limit: 5
+    commit-message: { prefix: "deps(frontend)" }
+    groups:
+      frontend-menores:
+        update-types: [minor, patch]
+
+  - package-ecosystem: docker # imagens base do Dockerfile (node e python)
+    directory: /
+    schedule: { interval: weekly, day: monday, time: "06:00", timezone: America/Sao_Paulo }
+    cooldown: { default-days: 14 }
+    commit-message: { prefix: "deps(docker)" }
+    ignore:
+      # O Node segue a linha LTS (24); a troca de versão maior é decisão manual.
+      - dependency-name: node
+        update-types: ["version-update:semver-major"]
+
+  - package-ecosystem: github-actions # ações usadas no CI
+    directory: /
+    schedule: { interval: weekly, day: monday, time: "06:00", timezone: America/Sao_Paulo }
+    cooldown: { default-days: 14 }
+    commit-message: { prefix: "deps(ci)" }
+    groups:
+      acoes-do-ci:
+        patterns: ["*"]
