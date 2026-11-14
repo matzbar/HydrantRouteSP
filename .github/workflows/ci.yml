@@ -38,3 +38,37 @@ jobs:
       - run: yarn install --frozen-lockfile
       - run: yarn lint
       - run: yarn build
+
+  docker:
+    name: Docker (build + teste da imagem)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      # Monta a imagem exatamente como o Render faz (mesmo Dockerfile), sem publicar em lugar nenhum.
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          load: true
+          tags: hydrantroute:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+      - name: Sobe o contêiner e confere site, API, segurança e saúde
+        run: |
+          docker run -d --name app -p 8000:8000 hydrantroute:ci
+          for _ in $(seq 1 30); do curl -fsS http://localhost:8000/api/ >/dev/null 2>&1 && break; sleep 1; done
+          echo "API responde:";            curl -fsS http://localhost:8000/api/ | grep '"status":"ok"'
+          echo "Site (React) servido:";    curl -fsS http://localhost:8000/ | grep -c '<div id="root">'
+          echo "Cabeçalho de segurança:";  curl -fsSI http://localhost:8000/ | grep -i '^content-security-policy:' | cut -c1-60
+          echo "Usuário sem root:";        docker exec app id -u | grep -x 10001
+          echo "HEALTHCHECK do Docker:"
+          for _ in $(seq 1 30); do
+            s=$(docker inspect --format '{{.State.Health.Status}}' app)
+            [ "$s" = "healthy" ] && break
+            [ "$s" = "unhealthy" ] && exit 1
+            sleep 3
+          done
+          echo "$s"; test "$s" = "healthy"
+      - name: Log do contêiner (só se algo falhar)
+        if: failure()
+        run: docker logs app
