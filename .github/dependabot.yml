@@ -26,6 +26,11 @@ updates:
     groups:
       frontend-menores:
         update-types: [minor, patch]
+    ignore:
+      # Tailwind 4 é uma reescrita (outra configuração e outro plugin do PostCSS): a migração é uma tarefa
+      # planejada, não uma atualização automática. Atualizações menores da linha 3 continuam chegando.
+      - dependency-name: tailwindcss
+        update-types: ["version-update:semver-major"]
 
   - package-ecosystem: docker # imagens base do Dockerfile (node e python)
     directory: /
