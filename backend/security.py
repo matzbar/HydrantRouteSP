@@ -5,14 +5,15 @@ from typing import Dict
 #  - scripts: só do próprio site (o build do Vite não tem scripts inline);
 #  - estilos: do próprio site e do Google Fonts; 'unsafe-inline' porque os marcadores do mapa (Leaflet) e os
 #    avisos (sonner) usam estilo direto no HTML;
-#  - fontes: Google Fonts; imagens: próprio site, data: (ícones do Leaflet no CSS) e os mapas do OpenStreetMap;
+#  - fontes: Google Fonts; imagens: próprio site, data: (ícones do Leaflet no CSS) e os mapas (MapTiler ou,
+#    sem chave, OpenStreetMap);
 #  - conexões: só a própria API; e a página não pode ser embutida em outro site.
 CSP = "; ".join([
     "default-src 'self'",
     "script-src 'self'",
     "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
     "font-src 'self' https://fonts.gstatic.com",
-    "img-src 'self' data: https://*.tile.openstreetmap.org",
+    "img-src 'self' data: https://api.maptiler.com https://*.tile.openstreetmap.org",
     "connect-src 'self'",
     "object-src 'none'",
     "base-uri 'self'",

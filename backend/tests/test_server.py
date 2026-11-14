@@ -474,3 +474,20 @@ def test_security_headers_on_rate_limited_response(client):
         client.get("/api/")
     r = client.get("/api/")
     assert r.status_code == 429 and r.headers["x-frame-options"] == "DENY"
+
+
+# ----------------------------- Mapa de fundo (MapTiler) -----------------------------
+def test_config_without_maptiler_key_falls_back_to_osm(client, monkeypatch):
+    monkeypatch.setattr(server, "MAPTILER_KEY", "")
+    assert client.get("/api/config").json()["map"] == {
+        "provider": "osm", "maptiler_key": None, "maptiler_style": server.MAPTILER_STYLE}
+
+
+def test_config_with_maptiler_key(client, monkeypatch):
+    monkeypatch.setattr(server, "MAPTILER_KEY", "chave-de-teste")
+    m = client.get("/api/config").json()["map"]
+    assert m["provider"] == "maptiler" and m["maptiler_key"] == "chave-de-teste"
+
+
+def test_csp_allows_maptiler_tiles(client):
+    assert "https://api.maptiler.com" in client.get("/api/").headers["content-security-policy"]

@@ -9,7 +9,8 @@ import HydrantTable from "../components/HydrantTable";
 import RouteResult from "../components/RouteResult";
 import StartPointPicker from "../components/StartPointPicker";
 import StationPicker, { DEFAULT_STATION_CODE, selectionFromStation } from "../components/StationPicker";
-import { listStations, getStationHydrants, retryStationGeocode, optimizeRoute } from "../lib/api";
+import { getConfig, listStations, getStationHydrants, retryStationGeocode, optimizeRoute } from "../lib/api";
+import { OSM_TILES, tilesFromConfig } from "../lib/mapTiles";
 
 const SP_FALLBACK = { lat: -23.5612, lon: -46.6558 };
 // Usada se o índice de estações do CB SP não carregar: a estação padrão ainda pode ser consultada.
@@ -33,6 +34,16 @@ export default function Dashboard() {
   const [routeLoading, setRouteLoading] = useState(false);
   const [maxStops, setMaxStops] = useState(5);
   const [startId, setStartId] = useState(null);
+
+  // Mapa de fundo (MapTiler ou OpenStreetMap), definido pelo backend. Sem resposta, OpenStreetMap.
+  const [tiles, setTiles] = useState(null);
+  useEffect(() => {
+    let cancelled = false;
+    getConfig()
+      .then((cfg) => !cancelled && setTiles(tilesFromConfig(cfg)))
+      .catch(() => !cancelled && setTiles(OSM_TILES));
+    return () => { cancelled = true; };
+  }, []);
 
   // Índice de estações (uma vez) + estação padrão.
   useEffect(() => {
@@ -374,6 +385,7 @@ export default function Dashboard() {
               </span>
             </div>
             <HydrantMap
+              tiles={tiles}
               hydrants={hydrants}
               gps={gps}
               routeOrder={routeOrderIds}
