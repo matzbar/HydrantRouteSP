@@ -1,40 +1,43 @@
 # Como colocar o HydrantRoute SP no ar (passo a passo para iniciantes)
 
-Tempo estimado: **30 a 40 minutos**. Custo: **R$ 0** (planos gratuitos).
+Tempo estimado: **40 a 50 minutos** na primeira vez. Custo: **R$ 0** (planos gratuitos).
 Você não precisa instalar nada no computador, só ter um navegador.
 
-Vamos usar 3 serviços gratuitos:
+Vamos usar 4 serviços gratuitos:
 
-| Serviço | Para que serve |
-|---------|----------------|
-| **GitHub** | Guarda o código do app (você já tem o repositório) |
-| **MongoDB Atlas** | Guarda as coordenadas dos endereços já localizados (opcional, mas deixa o app bem mais rápido) |
-| **Render** | O "servidor" que deixa o app no ar com um endereço `https://...` |
+| Serviço | Para que serve | Obrigatório? |
+|---------|----------------|--------------|
+| **GitHub** | Guarda o código do app | sim |
+| **Render** | O "servidor" que deixa o app no ar com um endereço `https://...` | sim |
+| **MapTiler** | O mapa de fundo | recomendado (sem ele, o app usa o OpenStreetMap, que limita o zoom) |
+| **MongoDB Atlas** | Guarda as coordenadas dos poucos hidrantes localizados pelo endereço | recomendado (sem ele, o app funciona, mas refaz essa busca a cada reinício) |
 
-> 💡 Dica: abra um bloco de notas para ir guardando as senhas e endereços que vão aparecer no caminho.
+> 💡 Dica: abra um bloco de notas para ir guardando as senhas, chaves e endereços que vão aparecer no caminho. **Não cole senhas em conversas, e-mails ou mensagens.**
 
----
-
-## Parte 1 — Atualizar o código no GitHub (5 min)
-
-O zip que você recebeu tem a versão nova do projeto. Ela precisa estar no seu repositório do GitHub.
-
-1. Descompacte o zip no seu computador. **Windows:** botão direito no zip → **Extrair tudo…** → **Extrair**. **Linux:** botão direito → **Extrair aqui**.
-2. Confira se aparecem os arquivos que começam com ponto (`.gitignore`, `.dockerignore`):
-   - **Windows:** já aparecem normalmente.
-   - **Linux:** ficam escondidos; no gerenciador de arquivos aperte **Ctrl + H**.
-   - **Mac:** aperte **Cmd + Shift + .** (ponto) no Finder.
-3. Abra seu repositório no site do GitHub.
-4. Clique em **Add file → Upload files**.
-5. **Arraste todo o conteúdo da pasta descompactada** (as pastas `backend`, `frontend`, e os arquivos `Dockerfile`, `docker-compose.yml`, `README.md`, `DEPLOY.md`, `.gitignore`, `.dockerignore`...) para a área de upload. Os arquivos com o mesmo nome serão substituídos, é isso mesmo que queremos.
-6. Lá embaixo, em "Commit changes", escreva algo como `Preparar deploy` e clique em **Commit changes**.
-7. Confira: na página inicial do repositório agora deve aparecer o arquivo **`Dockerfile`** na raiz (junto com as pastas `backend` e `frontend`). Se ele estiver dentro de outra pasta, o deploy não vai funcionar.
-
-> Se você já usa `git` no terminal, pode simplesmente copiar os arquivos por cima da sua pasta local, fazer `git add -A`, `git commit` e `git push`.
+O que o app faz, em resumo: você escolhe uma estação de bombeiros, ele lê ao vivo os hidrantes pendentes de vistoria no site do CB SP, mostra cada um na **posição oficial do mapa do CB SP** e monta uma rota otimizada pelo tempo real de carro, que abre no Google Maps.
 
 ---
 
-## Parte 2 — Criar o banco de dados no MongoDB Atlas (10 min)
+## Parte 1 — O código no GitHub (2 min)
+
+O código fica no repositório **`matzbar/HydrantRouteSP`** no GitHub. Não é preciso subir arquivos à mão.
+
+1. Abra o repositório no site do GitHub.
+2. Confira que, na raiz (junto com as pastas `backend` e `frontend`), aparece o arquivo **`Dockerfile`**. É ele que o Render usa para montar o app.
+
+**Como as mudanças chegam ao app no ar:**
+
+1. Cada mudança é feita numa *branch* separada e enviada como um **pull request** (PR).
+2. O GitHub roda os testes automáticos (**CI**: testes do backend, verificação de segurança das dependências, lint e build do frontend). O PR só deve entrar se tudo ficar verde ✅.
+3. Ao fazer o **merge** do PR na branch `main`, o Render faz o deploy sozinho em 5 a 15 minutos.
+
+> Se você copiar o projeto para outro repositório, ajuste o endereço do repositório no `backend/config.py` (`USER_AGENT`) e as origens permitidas no MapTiler (Parte 3).
+
+---
+
+## Parte 2 — Banco de dados no MongoDB Atlas (10 min, recomendado)
+
+O app **não guarda os hidrantes**: eles vêm do site do CB SP na hora. O banco guarda só as coordenadas dos hidrantes que não estão no mapa oficial e precisam ser localizados pelo endereço (hoje são raros). Pode pular esta parte e voltar depois.
 
 1. Acesse **https://www.mongodb.com/cloud/atlas/register** e crie uma conta (pode entrar com o Google).
 2. Ele vai perguntar algumas coisas sobre você. Responda qualquer coisa, não importa.
@@ -52,71 +55,98 @@ O zip que você recebeu tem a versão nova do projeto. Ela precisa estar no seu 
    ```
    mongodb+srv://hydrant:<db_password>@cluster0.abcde.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0
    ```
-   Substitua `<db_password>` (incluindo os sinais `<` `>`) pela senha que você anotou. Exemplo:
-   ```
-   mongodb+srv://hydrant:Abc123xyz@cluster0.abcde.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0
-   ```
-   Esse é o seu **MONGO_URL**.
+   Substitua `<db_password>` (incluindo os sinais `<` `>`) pela senha que você anotou. Esse é o seu **MONGO_URL**.
 7. **Liberar o acesso** (passo importante, muita gente esquece):
    - No menu da esquerda, clique em **Network Access** (ou "Security → Network Access").
-   - Clique em **Add IP Address**.
-   - Clique em **Allow Access from Anywhere** (vai preencher `0.0.0.0/0`).
-   - Clique em **Confirm**. Espere o status ficar **Active** (1 a 2 minutos).
+   - Clique em **Add IP Address** → **Allow Access from Anywhere** (preenche `0.0.0.0/0`) → **Confirm**.
+   - Espere o status ficar **Active** (1 a 2 minutos).
 
-   > Por que isso? O Render muda de endereço IP, então precisamos deixar o banco aceitar conexões de qualquer lugar. Quem protege o banco é a senha do usuário.
+   > Por que isso? O Render muda de endereço IP, então o banco precisa aceitar conexões de qualquer lugar. Quem protege o banco é a senha do usuário.
 
-Pronto, o banco está criado. Não precisa criar tabelas, o app faz isso sozinho.
+Pronto. Não precisa criar tabelas, o app faz isso sozinho.
 
 ---
 
-## Parte 3 — Colocar o app no ar no Render (10 min + espera)
+## Parte 3 — Chave do mapa no MapTiler (5 min, recomendado)
 
-1. Acesse **https://render.com** e clique em **Get Started**. Entre com a sua conta do **GitHub** (fica mais fácil).
+Sem chave, o app usa o mapa do OpenStreetMap, que **recusa zoom alto** (a partir do zoom 15) para apps em produção. Com a chave do MapTiler, todos os zooms funcionam.
+
+1. Crie uma conta em **https://www.maptiler.com** (o plano gratuito basta).
+2. No painel, vá em **API Keys** e crie uma chave nova.
+3. Preencha as restrições da chave:
+   - **Allowed HTTP Origins:** um domínio por linha, **sem `https://`, sem porta e sem caminho**:
+     ```
+     hydrantroute-sp.onrender.com
+     localhost
+     127.0.0.1
+     ```
+     Troque a primeira linha pelo endereço do seu app no Render, se for outro. Não use `?` (ele libera qualquer origem).
+   - **Allowed user-agent header:** deixe **vazio**.
+4. Copie a chave. Ela é o seu **MAPTILER_KEY**.
+5. Recomendado: ative um **alerta de uso** no painel do MapTiler, para saber se a cota gratuita estiver acabando.
+
+> A chave do mapa aparece para quem abre o app (é o navegador que baixa o mapa). Isso é normal. O que impede outra pessoa de usar a sua cota é a lista de origens do passo 3.
+
+---
+
+## Parte 4 — Colocar o app no ar no Render (10 min + espera)
+
+1. Acesse **https://render.com** e entre com a sua conta do **GitHub**.
 2. No painel, clique em **+ New → Web Service**.
-3. Na lista de repositórios, escolha o do HydrantRoute e clique em **Connect**.
-   - Se o repositório não aparecer, clique em **Configure account** / "Configure GitHub" e dê permissão ao Render para ver esse repositório.
-4. Preencha a tela de configuração:
-   - **Name:** `hydrantroute-sp` (esse nome vira parte do endereço do site).
-   - **Language / Runtime:** **Docker**. Ele costuma detectar sozinho por causa do arquivo `Dockerfile`.
+3. Escolha o repositório do HydrantRoute e clique em **Connect**.
+   - Se ele não aparecer, clique em **Configure account** / "Configure GitHub" e dê permissão ao Render para ver o repositório.
+4. Preencha a configuração:
+   - **Name:** `hydrantroute-sp` (vira parte do endereço do site).
+   - **Language / Runtime:** **Docker** (ele detecta sozinho por causa do `Dockerfile`).
    - **Branch:** `main`.
-   - **Region:** qualquer uma (ex.: Ohio ou Virginia).
+   - **Region:** qualquer uma.
    - **Root Directory:** deixe **em branco**.
    - **Instance Type:** **Free**.
-5. Desça até **Environment Variables** e adicione **duas** variáveis (botão **+ Add Environment Variable**):
+5. Em **Environment Variables**, adicione (botão **+ Add Environment Variable**):
 
-   | NAME | VALUE |
-   |------|-------|
-   | `MONGO_URL` | o endereço completo que você montou na Parte 2, passo 6 |
-   | `DB_NAME` | `hydrantroute` |
+   | NAME | VALUE | |
+   |------|-------|---|
+   | `MAPTILER_KEY` | a chave da Parte 3 | recomendado |
+   | `MONGO_URL` | o endereço da Parte 2, passo 6 | recomendado |
+   | `DB_NAME` | `hydrantroute` | junto com o `MONGO_URL` |
+   | `MAPTILER_STYLE` | `streets-v4` (ou outro estilo do MapTiler) | opcional; padrão `streets-v2` |
 
-   Atenção para não deixar espaços sobrando antes ou depois do valor.
-6. Clique em **Deploy Web Service** (ou "Create Web Service").
-7. Agora é esperar. O Render vai mostrar um log com muitas linhas passando. **O primeiro deploy demora de 5 a 15 minutos.** Quando terminar, aparece **"Your service is live 🎉"** e o status fica verde (**Live**).
-8. No topo da página tem o endereço do seu app, algo como:
-   ```
-   https://hydrantroute-sp.onrender.com
-   ```
-   Clique nele. 🎉
+   Atenção para não deixar espaços sobrando antes ou depois do valor. Outras configurações (limites de requisições, de paradas etc.) estão no `README.md` e têm valores padrão que já funcionam.
+6. Em **Advanced** (ou depois, em **Settings**), preencha **Health Check Path** com `/api/`. Assim o Render sabe se o app travou.
+7. Clique em **Deploy Web Service**.
+8. Agora é esperar. **O primeiro deploy demora de 5 a 15 minutos.** Quando terminar, aparece **"Your service is live 🎉"** e o status fica verde (**Live**).
+9. No topo da página tem o endereço do seu app, algo como `https://hydrantroute-sp.onrender.com`. Clique nele. 🎉
+
+> Mudou uma variável depois? Em **Environment**, clique em **Save Changes** e escolha **Save and deploy**: o app lê as variáveis ao iniciar, então precisa reiniciar para aplicar.
 
 ---
 
-## Parte 4 — Testar se está tudo funcionando (5 min)
+## Parte 5 — Testar se está tudo funcionando (5 min)
 
-1. Abra o endereço do app. O navegador vai pedir permissão de **localização**: clique em **Permitir** (é o GPS usado como ponto de partida da rota).
-2. A caixa **Estação de Bombeiros** já vem com **CBM · 03º GB · SGB 1 · SP - VILA FORMOSA**. Para outra estação, troque o CMD Regional, o GB, o SGB e a Estação.
-3. Os hidrantes pendentes de vistoria aparecem na lista, e uma barra mostra **"Localizando endereços · X/Y"**. Na primeira vez leva de alguns segundos a poucos minutos. Os pontos vão surgindo no mapa.
-4. Em **Rota**, escolha a quantidade de hidrantes e clique em **Gerar Rota Otimizada**.
-5. Clique em **Abrir Rota no Google Maps**. Se abriu a rota, está tudo certo! ✅
+1. Abra o endereço do app. O navegador vai pedir permissão de **localização**: clique em **Permitir** (o GPS é o ponto de partida da rota; sem ele, o app usa o centro de SP).
+2. A caixa **Estação de Bombeiros** já vem com **CBM · 03º GB · 1 (03.1) · SP - VILA FORMOSA**. Para outra estação, troque o CMD Regional, o GB, o SGB e a Estação.
+3. O cartão da estação mostra o ciclo e o **% realizado** (verde em 100%, vermelho abaixo disso).
+4. Os hidrantes pendentes aparecem no mapa e na lista em poucos segundos. Clique num marcador: o popup deve dizer **"Posição oficial (mapa do CB SP)"**. O canto do mapa deve mostrar **"© MapTiler"** (se aparecer só OpenStreetMap, veja "Deu problema?").
+5. Na lista, teste os filtros (por exemplo **INOP**): o mapa e a rota passam a considerar só os hidrantes do filtro.
+6. Em **Rota**, escolha a quantidade de hidrantes (**até 25 paradas por rota**; a rota escolhe as melhores entre todos os hidrantes do mapa) e, se quiser, uma **primeira parada**. Clique em **Gerar Rota Otimizada**.
+7. Clique em **Abrir Rota no Google Maps** (ou em **Abrir trecho 1, 2, 3**: o Google Maps aceita até 10 paradas por link). Se abriu a rota, está tudo certo! ✅
 
 No celular é só abrir o mesmo endereço. Dica: no navegador do celular, use "Adicionar à tela inicial" para ele aparecer como um app.
+
+**Para conferir qual versão está no ar:** abra `https://SEU-APP.onrender.com/api/`. O campo `build` mostra o commit em execução, que deve ser o último da branch `main` no GitHub.
 
 ---
 
 ## Coisas importantes de saber
 
-- **O plano gratuito do Render "dorme"** depois de 15 minutos sem ninguém usar. No próximo acesso, a primeira abertura demora **uns 30 a 60 segundos**. Depois fica rápido. Isso é normal, não é erro. Se quiser que fique sempre acordado, dá para pagar o plano Starter (cerca de US$ 7/mês) no próprio Render.
-- **Os hidrantes não ficam salvos no app**: eles são lidos do site do CB SP na hora. O MongoDB Atlas guarda só as coordenadas dos endereços, então depois que o app dorme ou reinicia o mapa volta a aparecer na hora.
-- **Atualizações automáticas:** toda vez que você mudar algo no GitHub (na branch `main`), o Render faz o deploy de novo sozinho.
+- **O plano gratuito do Render "dorme"** depois de 15 minutos sem ninguém usar. A primeira abertura seguinte demora **uns 30 a 60 segundos**. É normal. Para ficar sempre acordado, há o plano Starter (cerca de US$ 7/mês).
+- **Os hidrantes não ficam salvos no app.** Eles vêm do site do CB SP na hora, e as posições, do mapa oficial do CB SP. Se o site do CB SP sair do ar, o app mostra um aviso e você pode tentar de novo depois.
+- **Atualizações automáticas:** todo merge na branch `main` faz o Render publicar a nova versão sozinho.
+- **Proteções embutidas:** cada usuário pode fazer até 120 consultas e 20 rotas por minuto; o app aceita no máximo 300 rotas por minuto no total e só calcula rotas dentro do estado de SP. O uso normal nunca chega perto desses limites.
+- **Segurança:**
+  - Se uma senha do banco ou outra credencial aparecer em algum lugar público (conversa, e-mail, print), **troque-a** no Atlas (*Database Access → Edit → Edit Password*) e atualize o `MONGO_URL` no Render.
+  - Mantenha a chave do MapTiler restrita às origens da Parte 3.
+- **Limpeza de bancos antigos:** se o banco foi criado por uma versão antiga do app, rode uma vez o script `backend/scripts/limpar_banco.py` (instruções no `README.md`) para apagar dados que não são mais usados.
 
 ---
 
@@ -124,12 +154,20 @@ No celular é só abrir o mesmo endereço. Dica: no navegador do celular, use "A
 
 | O que aparece | O que fazer |
 |---------------|-------------|
-| No log do Render: `MONGO_URL não definida` | O app funciona, mas sem guardar as coordenadas. Vá em **Environment** no Render, confira se o nome é exatamente `MONGO_URL` (maiúsculo) e clique em **Save, rebuild and deploy**. |
+| No Render: `failed to read dockerfile` / `Dockerfile not found` | O `Dockerfile` não está na raiz do repositório. Confira a Parte 1. |
+| O site demora quase 1 minuto para abrir | É o plano gratuito acordando. Normal. |
+| **O mapa fica em branco** (sem ruas), mas os marcadores aparecem | A chave do MapTiler foi recusada. Confira em **Allowed HTTP Origins** se o endereço do app está escrito **sem `https://`** e exatamente como aparece no navegador. Confira também se o `MAPTILER_KEY` no Render está certo, sem espaços. |
+| O mapa aparece, mas o crédito diz só **OpenStreetMap** e o zoom alto falha | O app não recebeu a chave. Crie o `MAPTILER_KEY` no Render e use **Save and deploy**. |
+| Aparece **"Página do CB SP indisponível"** | O site do Corpo de Bombeiros pode estar fora do ar. Clique em **Tentar novamente** mais tarde. |
+| Aparece **"Esta estação não tem hidrantes pendentes de vistoria"** | A estação já completou as vistorias do ciclo (o cartão mostra 100% em verde). Não é erro. |
+| A rota não gera e aparece **"Nenhum hidrante corresponde aos filtros da lista"** | Algum filtro ou busca da lista está escondendo todos os hidrantes. Limpe a busca e volte os filtros para **Todos / Todas**. |
+| Aparece **"Muitas requisições em pouco tempo"** | O limite por usuário foi atingido. Espere um minuto. Se acontecer no uso normal, aumente `RATE_LIMIT_PER_MIN` ou `ROUTE_RATE_LIMIT_PER_MIN` no Render. |
+| Aparece **"O cálculo de rotas está muito requisitado"** | O limite total de rotas por minuto foi atingido. Espere um minuto. |
+| Aparece **"Sua localização está fora do estado de São Paulo"** | O app só calcula rotas dentro do estado de SP. Desative o GPS para usar o centro de SP como partida. |
+| O GPS não funciona | Confira se você permitiu a localização no navegador (ícone de cadeado ao lado do endereço). Sem GPS, o app usa o centro de SP como ponto de partida. |
+| No log: `MONGO_URL não definida` | O app funciona, mas sem guardar as coordenadas localizadas pelo endereço. Crie o `MONGO_URL` em **Environment** e use **Save and deploy**. |
 | No log: `ServerSelectionTimeoutError` ou `geocache read failed` | O banco está bloqueando o acesso. Refaça a **Parte 2, passo 7** (Network Access → `0.0.0.0/0`) e espere ficar Active. |
 | No log: `bad auth` / `Authentication failed` | Senha errada no `MONGO_URL`. Confira se trocou o `<db_password>` inteiro (sem `<` `>`). Se a senha tiver símbolos, crie outra só com letras e números em **Database Access** no Atlas. |
-| No Render: `failed to read dockerfile` / `Dockerfile not found` | O `Dockerfile` não está na raiz do repositório. Refaça a Parte 1, passo 7. |
-| O site demora quase 1 minuto para abrir | É o plano gratuito acordando. Normal. |
-| Aparece **"Página do CB SP indisponível"** | O site do Corpo de Bombeiros pode estar fora do ar. Clique em **Tentar novamente** mais tarde. |
-| O GPS não funciona | Confira se você permitiu a localização no navegador (ícone de cadeado ao lado do endereço). Sem GPS, o app usa o centro de SP como ponto de partida. |
+| Um PR mostra ❌ no GitHub | Algum teste automático falhou. Abra o PR → **Checks** para ver qual. Não faça o merge até ficar ✅. |
 
 Para ver o log no Render: abra o serviço → menu **Logs**. Se travar, copie as últimas linhas vermelhas do log e mande para quem puder ajudar.
