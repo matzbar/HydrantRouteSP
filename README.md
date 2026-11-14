@@ -42,6 +42,9 @@ Todas opcionais. Modelo em [`backend/.env.example`](backend/.env.example).
 | `OSRM_TABLE_MAX` | `100`         | Máximo de pontos por matriz aceito pelo seu OSRM |
 | `RATE_LIMIT_PER_MIN` | `120`     | Requisições por minuto por IP na API |
 | `ROUTE_RATE_LIMIT_PER_MIN` | `20` | Cálculos de rota por minuto por IP |
+| `MAX_ROUTE_STOPS` | `25` | Máximo de paradas por rota. Todos os hidrantes da estação continuam no mapa e entram como candidatos; a rota escolhe os melhores até esse número |
+| `MAX_ROUTE_POINTS` | `350` | Máximo de candidatos por pedido de rota (a maior estação tem 329 hidrantes). Não limita o mapa |
+| `ROUTE_GLOBAL_LIMIT_PER_MIN` | `300` | Cálculos de rota por minuto somando todos os usuários (protege a instância e o OSRM de abuso vindo de muitos IPs) |
 | `CLIENT_IP_HEADER` | `cf-connecting-ip` no Render, vazio fora | Cabeçalho com o IP do usuário escrito por um proxy confiável (a Cloudflare reescreve o `CF-Connecting-IP`; o cliente não consegue falsificá-lo) |
 | `TRUSTED_PROXY_HOPS` | `2` no Render, `0` fora | Alternativa ao cabeçalho acima: quantos proxies confiáveis acrescentam IPs ao `X-Forwarded-For`. Com `0`, vale o IP da conexão |
 
@@ -106,6 +109,7 @@ O GitHub Actions ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)) roda o
 - Todas as respostas levam cabeçalhos de segurança (`backend/security.py`): CSP (scripts só do próprio site; estilos, fontes e imagens só das origens usadas: Google Fonts e mapas do OpenStreetMap), `X-Frame-Options: DENY`, `X-Content-Type-Options`, `Referrer-Policy`, `Permissions-Policy` e, em HTTPS, `Strict-Transport-Security`. Ao adicionar um recurso externo novo ao frontend, inclua a origem na CSP.
 - No Docker, o app roda com um usuário sem privilégios (`app`), e um `HEALTHCHECK` consulta `/api/` a cada 30 s.
 - Limite de requisições por IP (`backend/ratelimit.py`), com o IP lido de forma que o cliente não consiga falsificar.
+- O cálculo de rota só aceita pontos dentro do estado de SP e tem um teto global por minuto, para não servir de calculadora de rotas genérica (proxy do OSRM).
 
 ## Privacidade e serviços externos
 

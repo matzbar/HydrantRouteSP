@@ -124,6 +124,7 @@ def client(monkeypatch):
     cb_sp.STATION_CACHE.clear()
     server.API_LIMITER.reset()
     server.ROUTE_LIMITER.reset()
+    server.ROUTE_GLOBAL_LIMITER.reset()
     cb_sp.OFFICIAL_CACHE.clear()
     geocoding.GEOCACHE.mem.clear()
     geocoding.GEO_FAILED.clear()
@@ -491,3 +492,65 @@ def test_config_with_maptiler_key(client, monkeypatch):
 
 def test_csp_allows_maptiler_tiles(client):
     assert "https://api.maptiler.com" in client.get("/api/").headers["content-security-policy"]
+
+
+# ----------------------------- Rota: só dentro de SP e teto global -----------------------------
+def test_route_rejects_points_outside_sp(client, monkeypatch):
+    called = []
+
+    async def spy_table(coords):
+        called.append(coords)
+        return None
+
+    monkeypatch.setattr(osrm, "osrm_table", spy_table)
+    rio = {"id": "rio", "lat": -22.9068, "lon": -43.1729}       # Rio de Janeiro (lon > -44)
+    paris = {"id": "paris", "lat": 48.8566, "lon": 2.3522}
+    r = client.post("/api/route/optimize", json={**ORIGIN, "points": POINTS[:3] + [rio, paris]})
+    assert r.status_code == 422
+    assert r.json()["detail"] == "2 ponto(s) fora do estado de São Paulo: rio, paris."
+    assert called == []  # recusado antes de consultar o OSRM
+
+
+def test_route_rejects_origin_outside_sp(client):
+    r = client.post("/api/route/optimize", json={"origin_lat": -22.9068, "origin_lon": -43.1729, "points": POINTS[:3]})
+    assert r.status_code == 422 and "fora do estado de São Paulo" in r.json()["detail"]
+
+
+def test_route_accepts_interior_of_sp(client):
+    """Pontos do interior (Presidente Prudente, Ubatuba, Franca) continuam valendo."""
+    pts = [{"id": "pp", "lat": -22.1256, "lon": -51.3889}, {"id": "uba", "lat": -23.4336, "lon": -45.0838},
+           {"id": "franca", "lat": -20.5386, "lon": -47.4008}]
+    assert client.post("/api/route/optimize", json={**ORIGIN, "points": pts}).status_code == 200
+
+
+def test_route_global_limit_across_ips(client, monkeypatch):
+    monkeypatch.setattr(server, "CLIENT_IP_HEADER", "cf-connecting-ip")
+    monkeypatch.setattr(server, "ROUTE_GLOBAL_LIMITER", server.RateLimiter(3))
+    body = {**ORIGIN, "points": POINTS[:3]}
+    codes = [client.post("/api/route/optimize", json=body, headers={"CF-Connecting-IP": f"200.0.0.{i}"}).status_code
+             for i in range(5)]  # 5 usuários diferentes, 1 rota cada
+    assert codes == [200, 200, 200, 429, 429]
+    r = client.post("/api/route/optimize", json=body, headers={"CF-Connecting-IP": "200.0.0.99"})
+    assert "muito requisitado" in r.json()["detail"]
+    assert client.get("/api/", headers={"CF-Connecting-IP": "200.0.0.99"}).status_code == 200  # resto da API segue
+
+
+# ----------------------------- Máximo de paradas por rota -----------------------------
+MANY = [{"id": str(i), "lat": -23.5 - i / 1000, "lon": -46.6} for i in range(40)]
+
+
+def test_route_stops_capped_but_all_points_are_candidates(client):
+    """40 hidrantes na estação: todos vão como candidatos, a rota tem no máximo MAX_ROUTE_STOPS paradas."""
+    d = client.post("/api/route/optimize", json={**ORIGIN, "points": MANY}).json()
+    assert len(d["stops"]) == server.MAX_ROUTE_STOPS == 25
+    assert d["optimization"]["candidates"] == 40
+    assert len(d["google_maps_segments"]) == 3
+
+
+def test_route_rejects_more_stops_than_allowed(client):
+    r = client.post("/api/route/optimize", json={**ORIGIN, "points": MANY, "max_stops": 26})
+    assert r.status_code == 422 and r.json()["detail"] == "A rota pode ter no máximo 25 paradas."
+
+
+def test_config_reports_route_max_stops(client):
+    assert client.get("/api/config").json()["route"] == {"max_stops": server.MAX_ROUTE_STOPS}
