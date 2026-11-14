@@ -1,4 +1,3 @@
-import { useMemo, useState } from "react";
 import { Input } from "./ui/input";
 import { Badge } from "./ui/badge";
 import { Search, AlertTriangle } from "lucide-react";
@@ -24,27 +23,12 @@ const typeStyle = {
   bica: { backgroundColor: "#0F766E33", color: "#5EEAD4" },
 };
 
-export default function HydrantTable({ hydrants, emptyMessage = "Nenhum hidrante encontrado." }) {
-  const [q, setQ] = useState("");
-  const [tf, setTf] = useState("todos");
-  const [sf, setSf] = useState("todos");
-
-  const filtered = useMemo(() => {
-    return hydrants.filter((h) => {
-      if (tf !== "todos" && h.type !== tf) return false;
-      if (sf !== "todos" && h.status !== sf) return false;
-      if (q) {
-        const n = q.toLowerCase();
-        if (
-          !(h.code || "").toLowerCase().includes(n) &&
-          !(h.address || "").toLowerCase().includes(n) &&
-          !(h.sector || "").toLowerCase().includes(n)
-        )
-          return false;
-      }
-      return true;
-    });
-  }, [hydrants, q, tf, sf]);
+/**
+ * Lista de hidrantes. Os filtros (busca, tipo, situação) ficam na página, porque também valem para o mapa e a
+ * rota: a tabela recebe a lista já filtrada e o total da estação.
+ */
+export default function HydrantTable({ hydrants, filtered, filters, onFiltersChange, emptyMessage = "Nenhum hidrante encontrado." }) {
+  const set = (patch) => onFiltersChange({ ...filters, ...patch });
 
   return (
     <div className="space-y-3">
@@ -54,8 +38,8 @@ export default function HydrantTable({ hydrants, emptyMessage = "Nenhum hidrante
           <Input
             data-testid="search-hydrants"
             placeholder="Buscar por código, endereço ou setor..."
-            value={q}
-            onChange={(e) => setQ(e.target.value)}
+            value={filters.q}
+            onChange={(e) => set({ q: e.target.value })}
             className="pl-9 bg-[#0B0F17] border-[#26334D] text-slate-100"
           />
         </div>
@@ -65,9 +49,9 @@ export default function HydrantTable({ hydrants, emptyMessage = "Nenhum hidrante
               key={t}
               type="button"
               data-testid={`filter-type-${t}`}
-              onClick={() => setTf(t)}
+              onClick={() => set({ type: t })}
               className={`px-3 py-1 rounded-full text-[11px] font-mono-t uppercase tracking-widest border transition-colors ${
-                tf === t
+                filters.type === t
                   ? "bg-[#26334D] text-white border-[#38475F]"
                   : "border-[#26334D] text-slate-400 hover:text-white"
               }`}
@@ -82,9 +66,9 @@ export default function HydrantTable({ hydrants, emptyMessage = "Nenhum hidrante
               key={s}
               type="button"
               data-testid={`filter-status-${s}`}
-              onClick={() => setSf(s)}
+              onClick={() => set({ status: s })}
               className={`px-3 py-1 rounded-full text-[11px] font-mono-t uppercase tracking-widest border transition-colors ${
-                sf === s
+                filters.status === s
                   ? "bg-[#26334D] text-white border-[#38475F]"
                   : "border-[#26334D] text-slate-400 hover:text-white"
               }`}
