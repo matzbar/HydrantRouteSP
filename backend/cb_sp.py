@@ -54,16 +54,26 @@ def clean_cell(v: str) -> Optional[str]:
     return None if v in ("", "None", "-") else v
 
 
+CB_UNAVAILABLE = "Página do CB SP indisponível no momento. Tente novamente em instantes."
+
+
+class PageNotFound(Exception):
+    """O site do CB SP respondeu 404: a página não existe (não é falha do site)."""
+
+
 async def fetch_html(url: str) -> str:
+    """Baixa uma página do CB SP. 404 vira PageNotFound; qualquer outra falha, 502 "indisponível"."""
     headers = {"User-Agent": USER_AGENT, "Accept-Language": "pt-BR,pt;q=0.9"}
     try:
         async with httpx.AsyncClient(timeout=30.0, headers=headers, follow_redirects=True) as hc:
             r = await hc.get(url)
+            if r.status_code == 404:
+                raise PageNotFound(url)
             r.raise_for_status()
             return r.text
     except httpx.HTTPError as exc:
         logger.warning("CB SP fetch failed for %s: %s", url, exc)
-        raise HTTPException(502, "Página do CB SP indisponível no momento. Tente novamente em instantes.")
+        raise HTTPException(502, CB_UNAVAILABLE)
 
 
 def _table_headers(table) -> List[str]:
@@ -204,7 +214,11 @@ OFFICIAL_CACHE = TTLCache(OFFICIAL_TTL_S)
 
 async def get_stations() -> List[dict]:
     async def load():
-        return parse_station_index(await fetch_html(CB_INDEX_URL))
+        try:
+            return parse_station_index(await fetch_html(CB_INDEX_URL))
+        except PageNotFound:  # o índice sumir é problema do site, não do pedido
+            logger.warning("CB SP index returned 404")
+            raise HTTPException(502, CB_UNAVAILABLE)
     return await INDEX_CACHE.get_or_load("index", load)
 
 
@@ -212,7 +226,10 @@ async def get_station_page(code: str) -> dict:
     url = urljoin(CB_INDEX_URL, f"{code}.html")
 
     async def load():
-        return parse_station_page(await fetch_html(url), url)
+        try:
+            return parse_station_page(await fetch_html(url), url)
+        except PageNotFound:
+            raise HTTPException(404, f"Estação {code} não encontrada no site do CB SP.")
     return await STATION_CACHE.get_or_load(code, load)
 
 

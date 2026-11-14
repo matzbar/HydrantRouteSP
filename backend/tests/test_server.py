@@ -96,8 +96,10 @@ def client(monkeypatch):
 
     async def fake_fetch(url):
         calls.append(url)
+        if url.endswith("/000000000.html"):  # simula estação inexistente (o site responde 404)
+            raise cb_sp.PageNotFound(url)
         if url not in pages:
-            raise HTTPException(502, "indisponível")
+            raise HTTPException(502, "indisponível")  # simula site fora do ar
         return pages[url]
 
     async def fake_geocode(address, municipality):
@@ -554,3 +556,58 @@ def test_route_rejects_more_stops_than_allowed(client):
 
 def test_config_reports_route_max_stops(client):
     assert client.get("/api/config").json()["route"] == {"max_stops": server.MAX_ROUTE_STOPS}
+
+
+
+# ----------------------------- Estação inexistente x site fora do ar -----------------------------
+def test_api_station_not_found_is_404(client):
+    r = client.get("/api/stations/000000000/hydrants")
+    assert r.status_code == 404
+    assert r.json()["detail"] == "Estação 000000000 não encontrada no site do CB SP."
+    assert client.post("/api/stations/000000000/geocode-retry").status_code == 404
+
+
+@pytest.mark.parametrize("status,expected", [(404, "not_found"), (500, 502), (503, 502), (200, "ok")])
+def test_fetch_html_distinguishes_missing_page_from_outage(status, expected, monkeypatch):
+    import asyncio
+
+    import httpx
+
+    real_client = httpx.AsyncClient
+
+    class MockClient(real_client):
+        def __init__(self, *a, **kw):
+            kw["transport"] = httpx.MockTransport(lambda req: httpx.Response(status, text="<html></html>", request=req))
+            super().__init__(*a, **kw)
+
+    monkeypatch.setattr(httpx, "AsyncClient", MockClient)
+    try:
+        asyncio.run(cb_sp.fetch_html("https://exemplo.test/x.html"))
+        result = "ok"
+    except cb_sp.PageNotFound:
+        result = "not_found"
+    except HTTPException as exc:
+        result = exc.status_code
+        assert exc.detail == cb_sp.CB_UNAVAILABLE
+    assert result == expected
+
+
+def test_fetch_html_network_failure_is_502(monkeypatch):
+    import asyncio
+
+    import httpx
+
+    real_client = httpx.AsyncClient
+
+    def boom(req):
+        raise httpx.ConnectTimeout("demorou", request=req)
+
+    class MockClient(real_client):
+        def __init__(self, *a, **kw):
+            kw["transport"] = httpx.MockTransport(boom)
+            super().__init__(*a, **kw)
+
+    monkeypatch.setattr(httpx, "AsyncClient", MockClient)
+    with pytest.raises(HTTPException) as exc:
+        asyncio.run(cb_sp.fetch_html("https://exemplo.test/x.html"))
+    assert exc.value.status_code == 502
