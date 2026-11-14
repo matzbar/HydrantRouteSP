@@ -82,15 +82,29 @@ export default function RouteResult({ open, onClose, result }) {
             <p className="text-[11px] text-slate-400">
               O Google Maps aceita até 10 paradas por rota. Sua rota foi dividida em {result.google_maps_segments.length} trechos — abra em sequência.
             </p>
-            <div className="grid grid-cols-2 gap-2">
-              {result.google_maps_segments.map((url, i) => (
-                <Button key={url} asChild className="w-full btn-tactical-red font-display uppercase tracking-wider text-sm font-bold">
-                  <a href={url} target="_blank" rel="noopener noreferrer" data-testid={`google-maps-link-${i + 1}`}>
-                    <ExternalLink className="w-4 h-4 mr-2" />
-                    Abrir trecho {i + 1}
-                  </a>
-                </Button>
-              ))}
+            {/* Todos os trechos na mesma linha; com 3 ou mais, letra menor e ícone só em telas maiores. */}
+            <div
+              className="grid gap-2"
+              style={{ gridTemplateColumns: `repeat(${result.google_maps_segments.length}, minmax(0, 1fr))` }}
+              data-testid="google-maps-segment-buttons"
+            >
+              {result.google_maps_segments.map((url, i) => {
+                const compact = result.google_maps_segments.length >= 3;
+                return (
+                  <Button
+                    key={url}
+                    asChild
+                    className={`w-full min-w-0 btn-tactical-red font-display uppercase font-bold ${
+                      compact ? "text-xs tracking-normal px-2" : "text-sm tracking-wider"
+                    }`}
+                  >
+                    <a href={url} target="_blank" rel="noopener noreferrer" data-testid={`google-maps-link-${i + 1}`}>
+                      <ExternalLink className={compact ? "hidden sm:inline-block w-3.5 h-3.5 mr-1 shrink-0" : "w-4 h-4 mr-2"} />
+                      <span className="truncate">Abrir trecho {i + 1}</span>
+                    </a>
+                  </Button>
+                );
+              })}
             </div>
           </div>
         ) : (

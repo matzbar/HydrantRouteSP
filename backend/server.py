@@ -23,8 +23,8 @@ import cb_sp
 import geocoding
 import osrm
 from config import (BUILD_COMMIT, CB_INDEX_URL, CLIENT_IP_HEADER, MAPTILER_KEY, MAPTILER_STYLE, MAX_ROUTE_POINTS,
-                    ON_RENDER, OSRM_TABLE_MAX, RATE_LIMIT_PER_MIN, ROUTE_RATE_LIMIT_PER_MIN, STATION_CODE_PATTERN,
-                    TRUSTED_PROXY_HOPS)
+                    MAX_ROUTE_STOPS, ON_RENDER, OSRM_TABLE_MAX, RATE_LIMIT_PER_MIN, ROUTE_GLOBAL_LIMIT_PER_MIN,
+                    ROUTE_RATE_LIMIT_PER_MIN, SP_BOUNDS, STATION_CODE_PATTERN, TRUSTED_PROXY_HOPS)
 from ratelimit import RateLimiter, client_ip
 from security import security_headers
 from routing import (build_google_maps_url, estimated_matrices, haversine_km, nearest_neighbor, optimize_open_path,
@@ -43,7 +43,7 @@ class RouteRequest(BaseModel):
     origin_lat: float = Field(..., ge=-90, le=90)
     origin_lon: float = Field(..., ge=-180, le=180)
     points: List[RoutePoint] = Field(..., min_length=1, max_length=MAX_ROUTE_POINTS)
-    max_stops: Optional[int] = Field(None, ge=1, le=MAX_ROUTE_POINTS)
+    max_stops: Optional[int] = Field(None, ge=1)  # até MAX_ROUTE_STOPS (conferido na rota, com mensagem clara)
     start_id: Optional[str] = Field(None, max_length=64)
 
 
@@ -91,7 +91,9 @@ api_router = APIRouter(prefix="/api")
 
 API_LIMITER = RateLimiter(RATE_LIMIT_PER_MIN)
 ROUTE_LIMITER = RateLimiter(ROUTE_RATE_LIMIT_PER_MIN)
+ROUTE_GLOBAL_LIMITER = RateLimiter(ROUTE_GLOBAL_LIMIT_PER_MIN)  # uma chave só: soma de todos os usuários
 TOO_MANY = "Muitas requisições em pouco tempo. Aguarde alguns segundos e tente novamente."
+ROUTES_BUSY = "O cálculo de rotas está muito requisitado no momento. Tente novamente em instantes."
 
 
 @app.middleware("http")
@@ -101,11 +103,14 @@ async def rate_limit(request: Request, call_next):
     if path.startswith("/api"):
         ip = client_ip(request.headers, request.client.host if request.client else None, TRUSTED_PROXY_HOPS,
                        CLIENT_IP_HEADER)
-        limiters = [API_LIMITER] + ([ROUTE_LIMITER] if path == "/api/route/optimize" else [])
-        for limiter in limiters:
-            wait = limiter.hit(ip)
+        # Por IP primeiro (quem abusa é barrado sem gastar a cota de todos); depois o teto global de rotas.
+        checks = [(API_LIMITER, ip, TOO_MANY)]
+        if path == "/api/route/optimize":
+            checks += [(ROUTE_LIMITER, ip, TOO_MANY), (ROUTE_GLOBAL_LIMITER, "todos", ROUTES_BUSY)]
+        for limiter, key, message in checks:
+            wait = limiter.hit(key)
             if wait is not None:
-                return JSONResponse(status_code=429, content={"detail": TOO_MANY},
+                return JSONResponse(status_code=429, content={"detail": message},
                                     headers={"Retry-After": str(int(wait) + 1)})
     return await call_next(request)
 
@@ -143,12 +148,15 @@ async def root(request: Request):
 
 @api_router.get("/config")
 async def frontend_config():
-    """Configuração pública do frontend: qual mapa de fundo usar."""
-    return {"map": {
-        "provider": "maptiler" if MAPTILER_KEY else "osm",
-        "maptiler_key": MAPTILER_KEY or None,
-        "maptiler_style": MAPTILER_STYLE,
-    }}
+    """Configuração pública do frontend: qual mapa de fundo usar e o máximo de paradas por rota."""
+    return {
+        "map": {
+            "provider": "maptiler" if MAPTILER_KEY else "osm",
+            "maptiler_key": MAPTILER_KEY or None,
+            "maptiler_style": MAPTILER_STYLE,
+        },
+        "route": {"max_stops": MAX_ROUTE_STOPS},
+    }
 
 
 @api_router.get("/stations")
@@ -182,8 +190,21 @@ async def station_geocode_retry(code: str = PathParam(..., pattern=STATION_CODE_
     return {"ok": True, "geocode": counts}
 
 
+def in_sp(lat: float, lon: float) -> bool:
+    lat_min, lat_max, lon_min, lon_max = SP_BOUNDS
+    return lat_min <= lat <= lat_max and lon_min <= lon <= lon_max
+
+
 @api_router.post("/route/optimize", response_model=RouteResponse)
 async def optimize_route(req: RouteRequest):
+    # Só pontos dentro do estado de SP: o app não serve de calculadora de rotas genérica (proxy do OSRM).
+    if not in_sp(req.origin_lat, req.origin_lon):
+        raise HTTPException(422, "Sua localização está fora do estado de São Paulo. "
+                                 "A rota só pode ser calculada a partir de um ponto dentro do estado.")
+    outside = [p.id for p in req.points if not in_sp(p.lat, p.lon)]
+    if outside:
+        raise HTTPException(422, f"{len(outside)} ponto(s) fora do estado de São Paulo: {', '.join(outside[:5])}"
+                                 f"{'…' if len(outside) > 5 else ''}.")
     points = list({p.id: p for p in req.points}.values())  # ignora ids repetidos
     # A partida é sempre a localização do usuário (GPS). Se um hidrante foi escolhido, ele é a 1ª parada fixa.
     origin = (req.origin_lat, req.origin_lon)
@@ -192,7 +213,9 @@ async def optimize_route(req: RouteRequest):
         start = next((p for p in points if p.id == req.start_id), None)
         if not start:
             raise HTTPException(400, "Hidrante escolhido como primeira parada não encontrado ou sem coordenadas")
-    n_select = min(req.max_stops or len(points), len(points))
+    if req.max_stops and req.max_stops > MAX_ROUTE_STOPS:
+        raise HTTPException(422, f"A rota pode ter no máximo {MAX_ROUTE_STOPS} paradas.")
+    n_select = min(req.max_stops or MAX_ROUTE_STOPS, MAX_ROUTE_STOPS, len(points))
 
     # A matriz do OSRM aceita até 100 coordenadas (origem + 99 hidrantes). Com mais hidrantes do que isso,
     # e se a rota pedida couber, usa os mais próximos da partida como candidatos.

@@ -38,6 +38,9 @@ OSRM_TABLE_MAX = int(os.environ.get("OSRM_TABLE_MAX", "100"))  # limite de coord
 # Proteção contra abuso: requisições por minuto por IP.
 RATE_LIMIT_PER_MIN = int(os.environ.get("RATE_LIMIT_PER_MIN", "120"))
 ROUTE_RATE_LIMIT_PER_MIN = int(os.environ.get("ROUTE_RATE_LIMIT_PER_MIN", "20"))  # cálculo de rota (usa o OSRM)
+# Teto de rotas por minuto somando todos os usuários: segura abuso vindo de muitos IPs ao mesmo tempo, que
+# deixaria a instância única lenta e poderia fazer o OSRM público bloquear o servidor.
+ROUTE_GLOBAL_LIMIT_PER_MIN = int(os.environ.get("ROUTE_GLOBAL_LIMIT_PER_MIN", "300"))
 # IP do usuário para o limite de requisições (veja ratelimit.client_ip). O Render define RENDER=true.
 ON_RENDER = bool(os.environ.get("RENDER"))
 # Cabeçalho com o IP do visitante escrito por um proxy confiável. No Render, que fica atrás da Cloudflare, é o
@@ -53,8 +56,16 @@ INDEX_TTL_S = 60 * 60  # o índice de estações muda pouco
 STATION_TTL_S = 5 * 60  # página de uma estação: evita bater no site do CB a cada consulta da tela
 OFFICIAL_TTL_S = 60 * 60  # posição oficial dos hidrantes muda raramente
 OFFICIAL_CHUNK = 500  # IDs por consulta ao ArcGIS
-SP_BOUNDS = (-25.6, -19.5, -53.4, -44.0)  # lat mín/máx, lon mín/máx do estado de SP (descarta pontos inválidos)
-MAX_ROUTE_POINTS = 500
+# Retângulo que cobre o estado de SP (lat mín/máx, lon mín/máx), com pequena folga: descarta posições oficiais
+# inválidas e limita o cálculo de rota a pontos dentro do estado.
+SP_BOUNDS = (-25.6, -19.5, -53.4, -44.0)
+# Candidatos por pedido de rota: todos os hidrantes da estação vão ao cálculo, que escolhe as melhores paradas
+# entre eles. A maior estação tem 329 hidrantes (SP - Campos Elíseos, nov/2026); 350 dá uma pequena folga.
+# Não limita o mapa, que mostra todos os hidrantes.
+MAX_ROUTE_POINTS = int(os.environ.get("MAX_ROUTE_POINTS", "350"))
+# Paradas por rota (quantos hidrantes a rota visita). Até 25 a rota usa sempre os tempos reais do OSRM
+# (matriz de até 99 pontos) e cabe em 3 links do Google Maps.
+MAX_ROUTE_STOPS = int(os.environ.get("MAX_ROUTE_STOPS", "25"))
 
 # Mapa de fundo. Com MAPTILER_KEY, o frontend usa o MapTiler (chave restrita por origem no painel do MapTiler);
 # sem ela, o OpenStreetMap. A chave é pública por natureza (vai para o navegador), mas não fica no repositório.

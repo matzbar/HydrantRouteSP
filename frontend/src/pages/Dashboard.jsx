@@ -9,7 +9,7 @@ import HydrantTable from "../components/HydrantTable";
 import RouteResult from "../components/RouteResult";
 import StartPointPicker from "../components/StartPointPicker";
 import StationPicker, { DEFAULT_STATION_CODE, selectionFromStation } from "../components/StationPicker";
-import { getConfig, listStations, getStationHydrants, retryStationGeocode, optimizeRoute } from "../lib/api";
+import { errorMessage, getConfig, listStations, getStationHydrants, retryStationGeocode, optimizeRoute } from "../lib/api";
 import { OSM_TILES, tilesFromConfig } from "../lib/mapTiles";
 
 const SP_FALLBACK = { lat: -23.5612, lon: -46.6558 };
@@ -17,6 +17,7 @@ const SP_FALLBACK = { lat: -23.5612, lon: -46.6558 };
 const DEFAULT_SELECTION = { cmd: "CBM", gb: "03", sgb: "1", code: DEFAULT_STATION_CODE };
 const POLL_MS = 3000;
 const DEFAULT_STOPS = 5;
+const DEFAULT_ROUTE_MAX_STOPS = 25; // o backend informa o valor em uso (/api/config)
 
 export default function Dashboard() {
   const [stations, setStations] = useState([]);
@@ -38,10 +39,15 @@ export default function Dashboard() {
 
   // Mapa de fundo (MapTiler ou OpenStreetMap), definido pelo backend. Sem resposta, OpenStreetMap.
   const [tiles, setTiles] = useState(null);
+  const [routeMaxStops, setRouteMaxStops] = useState(DEFAULT_ROUTE_MAX_STOPS);
   useEffect(() => {
     let cancelled = false;
     getConfig()
-      .then((cfg) => !cancelled && setTiles(tilesFromConfig(cfg)))
+      .then((cfg) => {
+        if (cancelled) return;
+        setTiles(tilesFromConfig(cfg));
+        if (cfg?.route?.max_stops > 0) setRouteMaxStops(cfg.route.max_stops);
+      })
       .catch(() => !cancelled && setTiles(OSM_TILES));
     return () => { cancelled = true; };
   }, []);
@@ -90,7 +96,7 @@ export default function Dashboard() {
         if (d.geocode.pending > 0) timer = setTimeout(() => load(false), POLL_MS);
       } catch (e) {
         if (cancelled) return;
-        if (first) setStationErr(e.response?.data?.detail || "Falha ao carregar os hidrantes da estação.");
+        if (first) setStationErr(errorMessage(e, "Falha ao carregar os hidrantes da estação."));
         else timer = setTimeout(() => load(false), POLL_MS * 2);
       } finally {
         if (first && !cancelled) setStationLoading(false);
@@ -109,7 +115,7 @@ export default function Dashboard() {
       toast.info("Localizando os endereços novamente");
       setReloadKey((k) => k + 1);
     } catch (e) {
-      toast.error(e.response?.data?.detail || "Não foi possível tentar novamente");
+      toast.error(errorMessage(e, "Não foi possível tentar novamente"));
     }
   };
 
@@ -136,13 +142,15 @@ export default function Dashboard() {
   const located = useMemo(() => hydrants.filter((h) => h.lat != null && h.lon != null), [hydrants]);
   const geocodedCount = located.length;
 
+  // Todos os hidrantes aparecem no mapa e entram como candidatos; a rota visita no máximo routeMaxStops deles.
+  const stopsLimit = Math.min(geocodedCount, routeMaxStops);
   useEffect(() => {
-    if (geocodedCount > 0 && maxStops > geocodedCount) setMaxStops(geocodedCount);
-  }, [geocodedCount, maxStops]);
+    if (stopsLimit > 0 && maxStops > stopsLimit) setMaxStops(stopsLimit);
+  }, [stopsLimit, maxStops]);
 
   // Sem hidrantes no mapa não há rota: a quantidade mostra 0 e os controles ficam desabilitados.
   const noStops = geocodedCount === 0;
-  const stopsShown = noStops ? 0 : Math.min(maxStops, geocodedCount);
+  const stopsShown = noStops ? 0 : Math.min(maxStops, stopsLimit);
 
   const handleRoute = async () => {
     if (located.length === 0) { toast.error("Nenhum hidrante localizado no mapa"); return; }
@@ -166,7 +174,7 @@ export default function Dashboard() {
       setRouteOpen(true);
       toast.success(`Rota com ${result.stops.length} paradas gerada`);
     } catch (e) {
-      toast.error(e.response?.data?.detail || "Erro ao gerar rota");
+      toast.error(errorMessage(e, "Erro ao gerar rota"));
     } finally {
       setRouteLoading(false);
     }
@@ -333,18 +341,18 @@ export default function Dashboard() {
                     Quantidade de hidrantes
                   </div>
                   <div className="font-display text-3xl font-black text-[#38BDF8] leading-none mt-1">
-                    {stopsShown} <span className="text-sm text-slate-500">/ {geocodedCount}</span>
+                    {stopsShown} <span className="text-sm text-slate-500">/ {stopsLimit}</span>
                   </div>
                 </div>
                 <Input
                   id="max-stops"
                   type="number"
                   min={noStops ? 0 : 1}
-                  max={geocodedCount}
+                  max={stopsLimit}
                   value={stopsShown}
                   onChange={(e) => {
                     const n = parseInt(e.target.value || "0", 10);
-                    if (!isNaN(n)) setMaxStops(Math.min(Math.max(1, n), Math.max(1, geocodedCount)));
+                    if (!isNaN(n)) setMaxStops(Math.min(Math.max(1, n), Math.max(1, stopsLimit)));
                   }}
                   data-testid="max-stops-input"
                   className="w-20 bg-[#121824] border-[#26334D] text-slate-100 text-center font-mono-t"
@@ -354,13 +362,19 @@ export default function Dashboard() {
               <Slider
                 data-testid="max-stops-slider"
                 min={noStops ? 0 : 1}
-                max={Math.max(1, geocodedCount)}
+                max={Math.max(1, stopsLimit)}
                 step={1}
                 value={[stopsShown]}
                 onValueChange={(v) => setMaxStops(v[0])}
                 disabled={noStops}
                 className="w-full"
               />
+              {geocodedCount > routeMaxStops && (
+                <p className="text-[11px] text-slate-500" data-testid="max-stops-note">
+                  {geocodedCount} hidrantes no mapa · máximo de {routeMaxStops} paradas por rota. A rota escolhe os
+                  melhores entre todos eles.
+                </p>
+              )}
               {noStops && data && (
                 <p className="text-[11px] text-slate-500" data-testid="no-stops-note">
                   {hydrants.length === 0
