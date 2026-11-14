@@ -10,7 +10,7 @@ import RouteResult from "../components/RouteResult";
 import StartPointPicker from "../components/StartPointPicker";
 import StationPicker, { DEFAULT_STATION_CODE, selectionFromStation } from "../components/StationPicker";
 import { errorMessage, getConfig, listStations, getStationHydrants, retryStationGeocode, optimizeRoute } from "../lib/api";
-import { OSM_TILES, tilesFromConfig } from "../lib/mapTiles";
+import { OSM_TILES, PROBE_INTERVAL_MS, maptilerAccepts, tilesFromConfig } from "../lib/mapTiles";
 import { NO_FILTERS, filterHydrants, isFiltering } from "../lib/hydrantFilters";
 
 const SP_FALLBACK = { lat: -23.5612, lon: -46.6558 };
@@ -43,17 +43,44 @@ export default function Dashboard() {
 
   // Mapa de fundo (MapTiler ou OpenStreetMap), definido pelo backend. Sem resposta, OpenStreetMap.
   const [tiles, setTiles] = useState(null);
+  const [mapFallback, setMapFallback] = useState(false); // MapTiler recusou: usando o OpenStreetMap
   const [routeMaxStops, setRouteMaxStops] = useState(DEFAULT_ROUTE_MAX_STOPS);
   useEffect(() => {
     let cancelled = false;
+    let timer;
+    // Confere se o MapTiler aceita a chave (agora e a cada 15 min); se recusar, troca para o OpenStreetMap.
+    const watch = async (preferred) => {
+      const ok = await maptilerAccepts(preferred);
+      if (cancelled) return;
+      if (ok === false) {
+        setTiles(OSM_TILES);
+        setMapFallback(true);
+        return; // fica no mapa alternativo até a página ser recarregada
+      }
+      timer = setTimeout(() => watch(preferred), PROBE_INTERVAL_MS);
+    };
     getConfig()
-      .then((cfg) => {
+      .then(async (cfg) => {
         if (cancelled) return;
-        setTiles(tilesFromConfig(cfg));
         if (cfg?.route?.max_stops > 0) setRouteMaxStops(cfg.route.max_stops);
+        const preferred = tilesFromConfig(cfg);
+        if (preferred.provider !== "maptiler") { setTiles(preferred); return; }
+        // Antes de desenhar o fundo, confere a chave (até 3 s), para nunca mostrar os blocos "Invalid key".
+        const ok = await maptilerAccepts(preferred, 3000);
+        if (cancelled) return;
+        if (ok === false) {
+          setTiles(OSM_TILES);
+          setMapFallback(true);
+          return;
+        }
+        setTiles(preferred);
+        timer = setTimeout(() => watch(preferred), PROBE_INTERVAL_MS);
       })
       .catch(() => !cancelled && setTiles(OSM_TILES));
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
   }, []);
 
   // Índice de estações (uma vez) + estação padrão.
@@ -443,6 +470,15 @@ export default function Dashboard() {
                 {filtering ? `${geocodedCount} de ${allLocatedCount} no mapa · filtro ativo` : `${geocodedCount} hidrantes no mapa`}
               </span>
             </div>
+            {mapFallback && (
+              <div
+                className="absolute bottom-10 left-5 z-[500] max-w-[75%] px-3 py-1.5 rounded-md bg-[#0B0F17]/85 border border-amber-500/40 backdrop-blur-md font-mono-t text-[10px] uppercase tracking-widest text-amber-300"
+                data-testid="map-fallback"
+                title="O MapTiler recusou a chave do mapa (cota esgotada ou chave inválida). O app passou a usar o OpenStreetMap, que tem menos zoom."
+              >
+                Mapa alternativo em uso (OpenStreetMap)
+              </div>
+            )}
             <HydrantMap
               tiles={tiles}
               hydrants={visible}

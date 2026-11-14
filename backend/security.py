@@ -7,14 +7,15 @@ from typing import Dict
 #    usam estilo direto no HTML;
 #  - fontes: só do próprio site (embutidas no app);
 #  - imagens: próprio site, data: (ícones do Leaflet no CSS) e os mapas (MapTiler ou, sem chave, OpenStreetMap);
-#  - conexões: só a própria API; e a página não pode ser embutida em outro site.
+#  - conexões: a própria API e o MapTiler (o app consulta um bloco de teste para saber se a chave do mapa foi
+#    aceita e, se não, troca para o OpenStreetMap); e a página não pode ser embutida em outro site.
 CSP = "; ".join([
     "default-src 'self'",
     "script-src 'self'",
     "style-src 'self' 'unsafe-inline'",
     "font-src 'self'",
     "img-src 'self' data: https://api.maptiler.com https://*.tile.openstreetmap.org",
-    "connect-src 'self'",
+    "connect-src 'self' https://api.maptiler.com",
     "object-src 'none'",
     "base-uri 'self'",
     "form-action 'self'",

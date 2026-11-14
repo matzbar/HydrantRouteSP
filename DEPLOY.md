@@ -83,7 +83,7 @@ Sem chave, o app usa o mapa do OpenStreetMap, que **recusa zoom alto** (a partir
      Troque a primeira linha pelo endereço do seu app no Render, se for outro. Não use `?` (ele libera qualquer origem).
    - **Allowed user-agent header:** deixe **vazio**.
 4. Copie a chave. Ela é o seu **MAPTILER_KEY**.
-5. Recomendado: ative um **alerta de uso** no painel do MapTiler, para saber se a cota gratuita estiver acabando.
+5. O plano gratuito não tem alerta de consumo. Confira o uso no painel do MapTiler **uma vez por mês**. Se a cota acabar, o app troca sozinho para o OpenStreetMap e mostra um aviso no mapa.
 
 > A chave do mapa aparece para quem abre o app (é o navegador que baixa o mapa). Isso é normal. O que impede outra pessoa de usar a sua cota é a lista de origens do passo 3.
 
@@ -146,6 +146,7 @@ No celular é só abrir o mesmo endereço. Dica: no navegador do celular, use "A
 - **Segurança:**
   - Se uma senha do banco ou outra credencial aparecer em algum lugar público (conversa, e-mail, print), **troque-a** no Atlas (*Database Access → Edit → Edit Password*) e atualize o `MONGO_URL` no Render.
   - Mantenha a chave do MapTiler restrita às origens da Parte 3.
+- O plano gratuito do MapTiler não tem alerta de consumo: confira o uso no painel dele **uma vez por mês**. Se a cota acabar, o app troca sozinho para o OpenStreetMap e avisa no mapa.
 - **Limpeza de bancos antigos:** se o banco foi criado por uma versão antiga do app, rode uma vez o script `backend/scripts/limpar_banco.py` (instruções no `README.md`) para apagar dados que não são mais usados.
 
 ---
@@ -156,7 +157,7 @@ No celular é só abrir o mesmo endereço. Dica: no navegador do celular, use "A
 |---------------|-------------|
 | No Render: `failed to read dockerfile` / `Dockerfile not found` | O `Dockerfile` não está na raiz do repositório. Confira a Parte 1. |
 | O site demora quase 1 minuto para abrir | É o plano gratuito acordando. Normal. |
-| **O mapa fica em branco** (sem ruas), mas os marcadores aparecem | A chave do MapTiler foi recusada. Confira em **Allowed HTTP Origins** se o endereço do app está escrito **sem `https://`** e exatamente como aparece no navegador. Confira também se o `MAPTILER_KEY` no Render está certo, sem espaços. |
+| O mapa mostra o aviso **"Mapa alternativo em uso (OpenStreetMap)"** | O MapTiler recusou a chave e o app trocou sozinho para o OpenStreetMap (que tem menos zoom). Causas comuns: **cota gratuita esgotada** (confira o uso no painel do MapTiler; volta no mês seguinte ou com outro plano), endereço do app fora de **Allowed HTTP Origins** (escrito **sem `https://`**) ou `MAPTILER_KEY` errado no Render. Depois de corrigir, recarregue a página. |
 | O mapa aparece, mas o crédito diz só **OpenStreetMap** e o zoom alto falha | O app não recebeu a chave. Crie o `MAPTILER_KEY` no Render e use **Save and deploy**. |
 | Aparece **"Página do CB SP indisponível"** | O site do Corpo de Bombeiros pode estar fora do ar. Clique em **Tentar novamente** mais tarde. |
 | Aparece **"Esta estação não tem hidrantes pendentes de vistoria"** | A estação já completou as vistorias do ciclo (o cartão mostra 100% em verde). Não é erro. |
