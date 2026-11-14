@@ -611,3 +611,9 @@ def test_fetch_html_network_failure_is_502(monkeypatch):
     with pytest.raises(HTTPException) as exc:
         asyncio.run(cb_sp.fetch_html("https://exemplo.test/x.html"))
     assert exc.value.status_code == 502
+
+
+def test_csp_serves_fonts_only_from_the_app(client):
+    csp = client.get("/api/").headers["content-security-policy"]
+    assert "font-src 'self'" in csp
+    assert "googleapis" not in csp and "gstatic" not in csp

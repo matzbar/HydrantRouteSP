@@ -3,16 +3,16 @@ from typing import Dict
 
 # Content Security Policy: de onde a página pode carregar cada tipo de recurso.
 #  - scripts: só do próprio site (o build do Vite não tem scripts inline);
-#  - estilos: do próprio site e do Google Fonts; 'unsafe-inline' porque os marcadores do mapa (Leaflet) e os
-#    avisos (sonner) usam estilo direto no HTML;
-#  - fontes: Google Fonts; imagens: próprio site, data: (ícones do Leaflet no CSS) e os mapas (MapTiler ou,
-#    sem chave, OpenStreetMap);
+#  - estilos: só do próprio site; 'unsafe-inline' porque os marcadores do mapa (Leaflet) e os avisos (sonner)
+#    usam estilo direto no HTML;
+#  - fontes: só do próprio site (embutidas no app);
+#  - imagens: próprio site, data: (ícones do Leaflet no CSS) e os mapas (MapTiler ou, sem chave, OpenStreetMap);
 #  - conexões: só a própria API; e a página não pode ser embutida em outro site.
 CSP = "; ".join([
     "default-src 'self'",
     "script-src 'self'",
-    "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
-    "font-src 'self' https://fonts.gstatic.com",
+    "style-src 'self' 'unsafe-inline'",
+    "font-src 'self'",
     "img-src 'self' data: https://api.maptiler.com https://*.tile.openstreetmap.org",
     "connect-src 'self'",
     "object-src 'none'",
