@@ -11,6 +11,7 @@ import StartPointPicker from "../components/StartPointPicker";
 import StationPicker, { DEFAULT_STATION_CODE, selectionFromStation } from "../components/StationPicker";
 import { errorMessage, getConfig, listStations, getStationHydrants, retryStationGeocode, optimizeRoute } from "../lib/api";
 import { OSM_TILES, tilesFromConfig } from "../lib/mapTiles";
+import { NO_FILTERS, filterHydrants, isFiltering } from "../lib/hydrantFilters";
 
 const SP_FALLBACK = { lat: -23.5612, lon: -46.6558 };
 // Usada se o índice de estações do CB SP não carregar: a estação padrão ainda pode ser consultada.
@@ -18,6 +19,7 @@ const DEFAULT_SELECTION = { cmd: "CBM", gb: "03", sgb: "1", code: DEFAULT_STATIO
 const POLL_MS = 3000;
 const DEFAULT_STOPS = 5;
 const DEFAULT_ROUTE_MAX_STOPS = 25; // o backend informa o valor em uso (/api/config)
+const hasCoords = (h) => h.lat != null && h.lon != null;
 
 export default function Dashboard() {
   const [stations, setStations] = useState([]);
@@ -36,6 +38,8 @@ export default function Dashboard() {
   const [routeLoading, setRouteLoading] = useState(false);
   const [maxStops, setMaxStops] = useState(DEFAULT_STOPS);
   const [startId, setStartId] = useState(null);
+  // Filtros da lista (busca, tipo, situação): valem também para o mapa e para a rota.
+  const [filters, setFilters] = useState(NO_FILTERS);
 
   // Mapa de fundo (MapTiler ou OpenStreetMap), definido pelo backend. Sem resposta, OpenStreetMap.
   const [tiles, setTiles] = useState(null);
@@ -79,6 +83,7 @@ export default function Dashboard() {
     setRouteOpen(false);
     setStartId(null);
     setMaxStops(DEFAULT_STOPS); // cada estação começa com a quantidade padrão (limitada aos hidrantes dela)
+    setFilters(NO_FILTERS);
   }, [sel.code]);
 
   // Carrega os hidrantes da estação e acompanha a geocodificação até terminar.
@@ -139,10 +144,28 @@ export default function Dashboard() {
 
   const hydrants = useMemo(() => data?.hydrants || [], [data]);
   const geo = data?.geocode;
-  const located = useMemo(() => hydrants.filter((h) => h.lat != null && h.lon != null), [hydrants]);
+  const filtering = isFiltering(filters);
+  // O que está no filtro da lista é o que aparece no mapa e o que entra na rota.
+  const visible = useMemo(() => filterHydrants(hydrants, filters), [hydrants, filters]);
+  const located = useMemo(() => visible.filter(hasCoords), [visible]);
+  const allLocatedCount = useMemo(() => hydrants.filter(hasCoords).length, [hydrants]);
   const geocodedCount = located.length;
 
-  // Todos os hidrantes aparecem no mapa e entram como candidatos; a rota visita no máximo routeMaxStops deles.
+  // Mudar o filtro descarta a rota gerada: ela deixaria de corresponder ao que está no mapa.
+  useEffect(() => {
+    setRoute(null);
+    setRouteOpen(false);
+  }, [filters]);
+
+  // A primeira parada precisa estar entre os hidrantes do filtro; se sair dele, volta para automática.
+  useEffect(() => {
+    if (startId && !located.some((h) => h.id === startId)) {
+      setStartId(null);
+      toast.info("A primeira parada escolhida não está no filtro atual: voltou para automática.");
+    }
+  }, [located, startId]);
+
+  // Os hidrantes do filtro aparecem no mapa e entram como candidatos; a rota visita no máximo routeMaxStops deles.
   const stopsLimit = Math.min(geocodedCount, routeMaxStops);
   useEffect(() => {
     if (stopsLimit > 0 && maxStops > stopsLimit) setMaxStops(stopsLimit);
@@ -153,7 +176,7 @@ export default function Dashboard() {
   const stopsShown = noStops ? 0 : Math.min(maxStops, stopsLimit);
 
   const handleRoute = async () => {
-    if (located.length === 0) { toast.error("Nenhum hidrante localizado no mapa"); return; }
+    if (located.length === 0) { toast.error("Nenhum hidrante no mapa para gerar a rota"); return; }
     const origin = gps || SP_FALLBACK;
     setRouteLoading(true);
     try {
@@ -168,7 +191,7 @@ export default function Dashboard() {
       setRoute({
         ...result,
         stops: result.stops.map((s) => ({ ...s, hydrant: byId.get(s.id) })).filter((s) => s.hydrant),
-        unreachable: hydrants.filter((h) => !h.geocoded).map((h) => h.code),
+        unreachable: visible.filter((h) => !h.geocoded).map((h) => h.code),
         origin,
       });
       setRouteOpen(true);
@@ -218,6 +241,9 @@ export default function Dashboard() {
     listBody = (
       <HydrantTable
         hydrants={hydrants}
+        filtered={visible}
+        filters={filters}
+        onFiltersChange={setFilters}
         emptyMessage="Esta estação não tem hidrantes pendentes de vistoria neste ciclo."
       />
     );
@@ -331,7 +357,7 @@ export default function Dashboard() {
             <h2 className="font-display text-lg font-bold uppercase tracking-wider">Rota</h2>
 
             <div className="rounded-lg bg-[#0B0F17] border border-[#26334D] p-4">
-              <StartPointPicker hydrants={hydrants} value={startId} onChange={setStartId} />
+              <StartPointPicker hydrants={visible} value={startId} onChange={setStartId} />
             </div>
 
             <div className="space-y-3 rounded-lg bg-[#0B0F17] border border-[#26334D] p-4">
@@ -375,11 +401,18 @@ export default function Dashboard() {
                   melhores entre todos eles.
                 </p>
               )}
+              {filtering && !noStops && (
+                <p className="text-[11px] text-amber-300/90" data-testid="route-filter-note">
+                  Filtro da lista ativo: a rota considera só os {geocodedCount} hidrante(s) do filtro.
+                </p>
+              )}
               {noStops && data && (
                 <p className="text-[11px] text-slate-500" data-testid="no-stops-note">
                   {hydrants.length === 0
                     ? "Esta estação não tem hidrantes pendentes de vistoria: não há rota a gerar."
-                    : "Nenhum hidrante localizado no mapa ainda: aguarde a localização para gerar a rota."}
+                    : visible.length === 0
+                      ? "Nenhum hidrante corresponde aos filtros da lista: ajuste os filtros para gerar a rota."
+                      : "Nenhum hidrante localizado no mapa ainda: aguarde a localização para gerar a rota."}
                 </p>
               )}
             </div>
@@ -406,17 +439,17 @@ export default function Dashboard() {
           <div className="tactical-card p-3 h-[400px] sm:h-[500px] relative">
             <div className="absolute top-5 right-5 z-[500] flex items-center gap-2 px-3 py-1.5 rounded-full bg-[#0B0F17]/85 border border-[#26334D] backdrop-blur-md">
               <MapPin className="w-3.5 h-3.5 text-[#EF4444]" />
-              <span className="font-mono-t text-[10px] uppercase tracking-widest text-slate-300">
-                {stats.geo} hidrantes no mapa
+              <span className="font-mono-t text-[10px] uppercase tracking-widest text-slate-300" data-testid="map-count">
+                {filtering ? `${geocodedCount} de ${allLocatedCount} no mapa · filtro ativo` : `${geocodedCount} hidrantes no mapa`}
               </span>
             </div>
             <HydrantMap
               tiles={tiles}
-              hydrants={hydrants}
+              hydrants={visible}
               gps={gps}
               routeOrder={routeOrderIds}
               routePolyline={routePolyline}
-              fitKey={`${sel.code}:${geocodedCount > 0}:${geocodingDone}`}
+              fitKey={`${sel.code}:${geocodedCount > 0}:${geocodingDone}:${filtering ? located.map((h) => h.id).join(",") : "todos"}`}
             />
           </div>
 
