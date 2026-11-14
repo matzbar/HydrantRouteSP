@@ -15,6 +15,7 @@ const SP_FALLBACK = { lat: -23.5612, lon: -46.6558 };
 // Usada se o índice de estações do CB SP não carregar: a estação padrão ainda pode ser consultada.
 const DEFAULT_SELECTION = { cmd: "CBM", gb: "03", sgb: "1", code: DEFAULT_STATION_CODE };
 const POLL_MS = 3000;
+const DEFAULT_STOPS = 5;
 
 export default function Dashboard() {
   const [stations, setStations] = useState([]);
@@ -31,7 +32,7 @@ export default function Dashboard() {
   const [route, setRoute] = useState(null);
   const [routeOpen, setRouteOpen] = useState(false);
   const [routeLoading, setRouteLoading] = useState(false);
-  const [maxStops, setMaxStops] = useState(5);
+  const [maxStops, setMaxStops] = useState(DEFAULT_STOPS);
   const [startId, setStartId] = useState(null);
 
   // Índice de estações (uma vez) + estação padrão.
@@ -60,6 +61,7 @@ export default function Dashboard() {
     setRoute(null);
     setRouteOpen(false);
     setStartId(null);
+    setMaxStops(DEFAULT_STOPS); // cada estação começa com a quantidade padrão (limitada aos hidrantes dela)
   }, [sel.code]);
 
   // Carrega os hidrantes da estação e acompanha a geocodificação até terminar.
@@ -125,8 +127,11 @@ export default function Dashboard() {
 
   useEffect(() => {
     if (geocodedCount > 0 && maxStops > geocodedCount) setMaxStops(geocodedCount);
-    if (geocodedCount > 0 && maxStops === 0) setMaxStops(Math.min(5, geocodedCount));
   }, [geocodedCount, maxStops]);
+
+  // Sem hidrantes no mapa não há rota: a quantidade mostra 0 e os controles ficam desabilitados.
+  const noStops = geocodedCount === 0;
+  const stopsShown = noStops ? 0 : Math.min(maxStops, geocodedCount);
 
   const handleRoute = async () => {
     if (located.length === 0) { toast.error("Nenhum hidrante localizado no mapa"); return; }
@@ -137,7 +142,7 @@ export default function Dashboard() {
         origin_lat: origin.lat,
         origin_lon: origin.lon,
         points: located.map((h) => ({ id: h.id, lat: h.lat, lon: h.lon })),
-        max_stops: maxStops,
+        max_stops: stopsShown,
         start_id: startId,
       });
       const byId = new Map(hydrants.map((h) => [h.id, h]));
@@ -317,39 +322,46 @@ export default function Dashboard() {
                     Quantidade de hidrantes
                   </div>
                   <div className="font-display text-3xl font-black text-[#38BDF8] leading-none mt-1">
-                    {maxStops} <span className="text-sm text-slate-500">/ {geocodedCount}</span>
+                    {stopsShown} <span className="text-sm text-slate-500">/ {geocodedCount}</span>
                   </div>
                 </div>
                 <Input
                   id="max-stops"
                   type="number"
-                  min={1}
-                  max={geocodedCount || 1}
-                  value={maxStops}
+                  min={noStops ? 0 : 1}
+                  max={geocodedCount}
+                  value={stopsShown}
                   onChange={(e) => {
                     const n = parseInt(e.target.value || "0", 10);
                     if (!isNaN(n)) setMaxStops(Math.min(Math.max(1, n), Math.max(1, geocodedCount)));
                   }}
                   data-testid="max-stops-input"
                   className="w-20 bg-[#121824] border-[#26334D] text-slate-100 text-center font-mono-t"
-                  disabled={geocodedCount === 0}
+                  disabled={noStops}
                 />
               </div>
               <Slider
                 data-testid="max-stops-slider"
-                min={1}
+                min={noStops ? 0 : 1}
                 max={Math.max(1, geocodedCount)}
                 step={1}
-                value={[maxStops]}
+                value={[stopsShown]}
                 onValueChange={(v) => setMaxStops(v[0])}
-                disabled={geocodedCount === 0}
+                disabled={noStops}
                 className="w-full"
               />
+              {noStops && data && (
+                <p className="text-[11px] text-slate-500" data-testid="no-stops-note">
+                  {hydrants.length === 0
+                    ? "Esta estação não tem hidrantes pendentes de vistoria: não há rota a gerar."
+                    : "Nenhum hidrante localizado no mapa ainda: aguarde a localização para gerar a rota."}
+                </p>
+              )}
             </div>
 
             <Button
               onClick={handleRoute}
-              disabled={routeLoading || geocodedCount === 0}
+              disabled={routeLoading || noStops}
               data-testid="generate-route-btn"
               className="w-full btn-tactical-red font-display uppercase tracking-wider text-base font-bold py-6"
             >
