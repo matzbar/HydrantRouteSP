@@ -617,3 +617,8 @@ def test_csp_serves_fonts_only_from_the_app(client):
     csp = client.get("/api/").headers["content-security-policy"]
     assert "font-src 'self'" in csp
     assert "googleapis" not in csp and "gstatic" not in csp
+
+
+def test_csp_allows_maptiler_probe(client):
+    csp = client.get("/api/").headers["content-security-policy"]
+    assert "connect-src 'self' https://api.maptiler.com" in csp
