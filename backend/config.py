@@ -1,6 +1,7 @@
 """Endereços dos serviços externos e limites do app."""
 import logging
 import os
+import re
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -54,3 +55,9 @@ OFFICIAL_TTL_S = 60 * 60  # posição oficial dos hidrantes muda raramente
 OFFICIAL_CHUNK = 500  # IDs por consulta ao ArcGIS
 SP_BOUNDS = (-25.6, -19.5, -53.4, -44.0)  # lat mín/máx, lon mín/máx do estado de SP (descarta pontos inválidos)
 MAX_ROUTE_POINTS = 500
+
+# Mapa de fundo. Com MAPTILER_KEY, o frontend usa o MapTiler (chave restrita por origem no painel do MapTiler);
+# sem ela, o OpenStreetMap. A chave é pública por natureza (vai para o navegador), mas não fica no repositório.
+MAPTILER_KEY = os.environ.get("MAPTILER_KEY", "").strip()
+_style = os.environ.get("MAPTILER_STYLE", "streets-v2").strip()
+MAPTILER_STYLE = _style if re.fullmatch(r"[a-z0-9-]{1,40}", _style) else "streets-v2"

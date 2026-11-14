@@ -8,6 +8,8 @@ services:
     environment:
       MONGO_URL: mongodb://mongo:27017
       DB_NAME: hydrantroute
+      # Mapa de fundo: passe a chave ao subir (MAPTILER_KEY=... docker compose up -d); sem ela, OpenStreetMap.
+      MAPTILER_KEY: ${MAPTILER_KEY:-}
     depends_on:
       - mongo
     restart: unless-stopped

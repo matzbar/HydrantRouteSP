@@ -7,7 +7,7 @@ App para escolher uma estação de bombeiros (CMD Regional → GB → SGB → Es
 - A rota parte do GPS e a ordem das paradas é otimizada pelo **tempo real de carro** (OSRM).
 - Estação padrão: **CBM · 03º GB · SGB 03.1 · SP - VILA FORMOSA**.
 
-Sem chaves de API: usa o ArcGIS do CB SP (posição oficial), ArcGIS/Photon/Nominatim (localização pelo endereço), OSRM (tempos de carro) e links do Google Maps.
+Usa o ArcGIS do CB SP (posição oficial), ArcGIS/Photon/Nominatim (localização pelo endereço), OSRM (tempos de carro), MapTiler ou OpenStreetMap (mapa de fundo) e links do Google Maps. A única chave é a do MapTiler, opcional.
 
 ## Estrutura
 
@@ -34,6 +34,8 @@ Todas opcionais. Modelo em [`backend/.env.example`](backend/.env.example).
 |----------------|----------------|----------------|
 | `MONGO_URL`    | (sem banco)    | Guarda as coordenadas obtidas pelo endereço entre reinícios. Recomendada. |
 | `DB_NAME`      | `hydrantroute` | Nome do banco no MongoDB |
+| `MAPTILER_KEY` | (sem chave)    | Chave do MapTiler para o mapa de fundo. Sem ela, o app usa o OpenStreetMap (que limita o zoom em produção). No painel do MapTiler, restrinja a chave por origem (`hydrantroute-sp.onrender.com`, `localhost`, `127.0.0.1`) e deixe o user-agent vazio |
+| `MAPTILER_STYLE` | `streets-v2` | Estilo de mapa do MapTiler (ex.: `streets-v2`, `basic-v2`, `satellite`) |
 | `PORT`         | `8000`         | Definida automaticamente pelo Render/Railway |
 | `CORS_ORIGINS` | `*`            | Só se o frontend ficar em outro domínio |
 | `OSRM_BASE_URL` | servidor público do OSRM | Para usar um OSRM próprio ou comercial (o público é para uso leve) |
@@ -47,6 +49,7 @@ Todas opcionais. Modelo em [`backend/.env.example`](backend/.env.example).
 
 ```bash
 docker compose up -d --build        # app + MongoDB
+# com o mapa do MapTiler:  MAPTILER_KEY=sua_chave docker compose up -d --build
 # abre em http://localhost:8000  (PORT=8080 docker compose up -d para outra porta)
 ```
 

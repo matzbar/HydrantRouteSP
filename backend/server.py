@@ -22,8 +22,9 @@ from starlette.middleware.cors import CORSMiddleware
 import cb_sp
 import geocoding
 import osrm
-from config import (BUILD_COMMIT, CB_INDEX_URL, CLIENT_IP_HEADER, MAX_ROUTE_POINTS, ON_RENDER, OSRM_TABLE_MAX,
-                    RATE_LIMIT_PER_MIN, ROUTE_RATE_LIMIT_PER_MIN, STATION_CODE_PATTERN, TRUSTED_PROXY_HOPS)
+from config import (BUILD_COMMIT, CB_INDEX_URL, CLIENT_IP_HEADER, MAPTILER_KEY, MAPTILER_STYLE, MAX_ROUTE_POINTS,
+                    ON_RENDER, OSRM_TABLE_MAX, RATE_LIMIT_PER_MIN, ROUTE_RATE_LIMIT_PER_MIN, STATION_CODE_PATTERN,
+                    TRUSTED_PROXY_HOPS)
 from ratelimit import RateLimiter, client_ip
 from security import security_headers
 from routing import (build_google_maps_url, estimated_matrices, haversine_km, nearest_neighbor, optimize_open_path,
@@ -138,6 +139,16 @@ async def root(request: Request):
             "forwarded_for_entries": len(forwarded),
         },
     }
+
+
+@api_router.get("/config")
+async def frontend_config():
+    """Configuração pública do frontend: qual mapa de fundo usar."""
+    return {"map": {
+        "provider": "maptiler" if MAPTILER_KEY else "osm",
+        "maptiler_key": MAPTILER_KEY or None,
+        "maptiler_style": MAPTILER_STYLE,
+    }}
 
 
 @api_router.get("/stations")

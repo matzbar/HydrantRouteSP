@@ -43,7 +43,7 @@ function FitBounds({ points, fitKey }) {
   return null;
 }
 
-export default function HydrantMap({ hydrants, gps, routeOrder, routePolyline, fitKey }) {
+export default function HydrantMap({ tiles, hydrants, gps, routeOrder, routePolyline, fitKey }) {
   const geocoded = useMemo(() => hydrants.filter((h) => h.lat != null && h.lon != null), [hydrants]);
   const bounds = useMemo(() => {
     const pts = geocoded.map((h) => [h.lat, h.lon]);
@@ -66,10 +66,16 @@ export default function HydrantMap({ hydrants, gps, routeOrder, routePolyline, f
         style={{ height: "100%", width: "100%", minHeight: "420px" }}
         scrollWheelZoom
       >
-        <TileLayer
-          attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
-          url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-        />
+        {/* Só desenha o fundo depois de saber o provedor, para não carregar dois mapas. */}
+        {tiles && (
+          <TileLayer
+            key={tiles.url}
+            url={tiles.url}
+            attribution={tiles.attribution}
+            maxZoom={tiles.maxZoom}
+            crossOrigin={tiles.crossOrigin}
+          />
+        )}
         <FitBounds points={bounds} fitKey={`${fitKey}:${!!gps}`} />
         {gps && (
           <Marker position={[gps.lat, gps.lon]} icon={gpsIcon}>
