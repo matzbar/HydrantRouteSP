@@ -21,9 +21,10 @@ from starlette.middleware.cors import CORSMiddleware
 
 import cb_sp
 import geocoding
+import map_quota
 import osrm
-from config import (BUILD_COMMIT, CB_INDEX_URL, CLIENT_IP_HEADER, MAPTILER_KEY, MAPTILER_STYLE, MAX_ROUTE_POINTS,
-                    MAX_ROUTE_STOPS, ON_RENDER, OSRM_TABLE_MAX, RATE_LIMIT_PER_MIN, ROUTE_GLOBAL_LIMIT_PER_MIN,
+from config import (BUILD_COMMIT, CB_INDEX_URL, CLIENT_IP_HEADER, MAPTILER_CUTOFF_PERCENT, MAPTILER_KEY,
+                    MAPTILER_STYLE, MAX_ROUTE_POINTS, MAX_ROUTE_STOPS, MONITOR_CLIENT_KEY, MONITOR_URL, ON_RENDER, OSRM_TABLE_MAX, RATE_LIMIT_PER_MIN, ROUTE_GLOBAL_LIMIT_PER_MIN,
                     ROUTE_RATE_LIMIT_PER_MIN, SP_BOUNDS, STATION_CODE_PATTERN, TRUSTED_PROXY_HOPS)
 from ratelimit import RateLimiter, client_ip
 from security import security_headers
@@ -71,14 +72,23 @@ class RouteResponse(BaseModel):
     optimization: Optional[RouteOptimization] = None
 
 
+# Troca para o OpenStreetMap com a conta do MapTiler perto do fim da cota (consulta o maptiler-usage-monitor).
+MAP_QUOTA = map_quota.QuotaGuard(MONITOR_URL, MONITOR_CLIENT_KEY, MAPTILER_CUTOFF_PERCENT)
+
+
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
     geocoding.GEOCACHE.connect(os.environ.get("MONGO_URL"), os.environ.get("DB_NAME", "hydrantroute"))
     index_task = asyncio.create_task(geocoding.GEOCACHE.ensure_index())
     geocoding.GEOCODER.start()
+    if geocoding.GEOCACHE.coll is not None:
+        MAP_QUOTA.coll = geocoding.GEOCACHE.coll.database["map_quota"]
+    if MAPTILER_KEY:
+        MAP_QUOTA.refresh_in_background()  # lê a decisão guardada (e consulta o monitor, se ela for antiga)
     try:
         yield
     finally:
+        await MAP_QUOTA.stop()
         await geocoding.GEOCODER.stop()
         index_task.cancel()
         with suppress(asyncio.CancelledError):
@@ -149,10 +159,12 @@ async def root(request: Request):
 @api_router.get("/config")
 async def frontend_config():
     """Configuração pública do frontend: qual mapa de fundo usar e o máximo de paradas por rota."""
+    # Sem chave, ou com a conta do MapTiler no limite de consumo (MAPTILER_CUTOFF_PERCENT), o OpenStreetMap.
+    use_maptiler = bool(MAPTILER_KEY) and not MAP_QUOTA.use_osm()
     return {
         "map": {
-            "provider": "maptiler" if MAPTILER_KEY else "osm",
-            "maptiler_key": MAPTILER_KEY or None,
+            "provider": "maptiler" if use_maptiler else "osm",
+            "maptiler_key": MAPTILER_KEY if use_maptiler else None,
             "maptiler_style": MAPTILER_STYLE,
         },
         "route": {"max_stops": MAX_ROUTE_STOPS},

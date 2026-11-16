@@ -36,6 +36,9 @@ Todas opcionais. Modelo em [`backend/.env.example`](backend/.env.example).
 | `DB_NAME`      | `hydrantroute` | Nome do banco no MongoDB |
 | `MAPTILER_KEY` | (sem chave)    | Chave do MapTiler para o mapa de fundo. Sem ela, ou se o MapTiler recusar a chave (cota esgotada, chave inválida), o app usa o OpenStreetMap (que limita o zoom em produção) e avisa no mapa. No painel do MapTiler, restrinja a chave por origem (`hydrantroute-sp.onrender.com`, `localhost`, `127.0.0.1`) e deixe o user-agent vazio |
 | `MAPTILER_STYLE` | `streets-v2` | Estilo de mapa do MapTiler (ex.: `streets-v2`, `basic-v2`, `satellite`) |
+| `MONITOR_URL` | (sem monitor) | Endereço do [maptiler-usage-monitor](https://github.com/matzbar/maptiler-usage-monitor), sem barra no fim. Com ele e `MONITOR_CLIENT_KEY`, o app troca para o OpenStreetMap quando a conta do MapTiler chega a `MAPTILER_CUTOFF_PERCENT` da cota (veja `backend/map_quota.py`) |
+| `MONITOR_CLIENT_KEY` | (sem monitor) | Chave do projeto no monitor (`python -m scripts.clients create HydrantRouteSP ...`). Fica só no backend, nunca no navegador |
+| `MAPTILER_CUTOFF_PERCENT` | `99` | Porcentagem de requests ou sessions da conta do MapTiler a partir da qual o mapa passa a ser o OpenStreetMap. Na dúvida (monitor fora do ar, dado antigo), o app fica no MapTiler. O monitor é consultado no máximo a cada 6 h, e a decisão fica no MongoDB, se houver, para não acordar o monitor a cada reinício |
 | `PORT`         | `8000`         | Definida automaticamente pelo Render/Railway |
 | `CORS_ORIGINS` | `*`            | Só se o frontend ficar em outro domínio |
 | `OSRM_BASE_URL` | servidor público do OSRM | Para usar um OSRM próprio ou comercial (o público é para uso leve) |

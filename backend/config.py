@@ -72,3 +72,10 @@ MAX_ROUTE_STOPS = int(os.environ.get("MAX_ROUTE_STOPS", "25"))
 MAPTILER_KEY = os.environ.get("MAPTILER_KEY", "").strip()
 _style = os.environ.get("MAPTILER_STYLE", "streets-v2").strip()
 MAPTILER_STYLE = _style if re.fullmatch(r"[a-z0-9-]{1,40}", _style) else "streets-v2"
+
+# Corte do MapTiler perto do fim da cota (veja map_quota.py). Com MONITOR_URL e MONITOR_CLIENT_KEY, o app consulta o
+# maptiler-usage-monitor e, com a conta em MAPTILER_CUTOFF_PERCENT% ou mais, passa a usar o OpenStreetMap.
+# A chave do projeto fica só no backend, nunca no navegador.
+MONITOR_URL = os.environ.get("MONITOR_URL", "").strip().rstrip("/")
+MONITOR_CLIENT_KEY = os.environ.get("MONITOR_CLIENT_KEY", "").strip()
+MAPTILER_CUTOFF_PERCENT = min(max(float(os.environ.get("MAPTILER_CUTOFF_PERCENT", "99")), 1.0), 100.0)
