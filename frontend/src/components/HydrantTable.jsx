@@ -18,7 +18,8 @@ export const statusColor = {
   sem_vistoria: "#94A3B8",
   outro: "#94A3B8",
 };
-const FILTER_BOX = "flex gap-1.5 flex-wrap items-center rounded-lg bg-[#0B0F17] border border-[#26334D] p-1.5";
+// Mesma altura do campo de busca (h-10 = 40px), com os botões centralizados.
+const FILTER_BOX = "flex gap-1.5 flex-wrap items-center min-h-10 rounded-lg bg-[#0B0F17] border border-[#26334D] px-1.5 py-1";
 const typeStyle = {
   subterraneo: { backgroundColor: "#1E3A8A33", color: "#93C5FD" },
   coluna: { backgroundColor: "#5B21B633", color: "#C4B5FD" },
@@ -42,7 +43,7 @@ export default function HydrantTable({ hydrants, filtered, filters, onFiltersCha
             placeholder="Buscar por código, endereço ou setor..."
             value={filters.q}
             onChange={(e) => set({ q: e.target.value })}
-            className="pl-9 bg-[#0B0F17] border-[#26334D] text-slate-100"
+            className="h-10 pl-9 rounded-lg bg-[#0B0F17] border-[#26334D] text-slate-100"
           />
         </div>
         {/* Cada grupo de filtros numa caixa com borda de 1px e cantos arredondados, como os demais quadros. */}
