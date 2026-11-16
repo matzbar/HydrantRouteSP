@@ -9,7 +9,8 @@ export const statusLabel = {
   nao_localizado: "Não localizado",
   sem_vistoria: "Sem vistoria",
 };
-const statusShort = { possivel_de_uso: "OK", inoperante: "INOP", nao_localizado: "N/LOC" };
+// Siglas dos botões de filtro; o nome completo aparece ao passar o mouse e é o que o leitor de tela anuncia.
+const statusShort = { possivel_de_uso: "OP", inoperante: "INOP", nao_localizado: "N/LOC" };
 export const statusColor = {
   possivel_de_uso: "#10B981",
   inoperante: "#EF4444",
@@ -17,6 +18,7 @@ export const statusColor = {
   sem_vistoria: "#94A3B8",
   outro: "#94A3B8",
 };
+const FILTER_BOX = "flex gap-1.5 flex-wrap items-center rounded-lg bg-[#0B0F17] border border-[#26334D] p-1.5";
 const typeStyle = {
   subterraneo: { backgroundColor: "#1E3A8A33", color: "#93C5FD" },
   coluna: { backgroundColor: "#5B21B633", color: "#C4B5FD" },
@@ -43,7 +45,8 @@ export default function HydrantTable({ hydrants, filtered, filters, onFiltersCha
             className="pl-9 bg-[#0B0F17] border-[#26334D] text-slate-100"
           />
         </div>
-        <div className="flex gap-1.5 flex-wrap">
+        {/* Cada grupo de filtros numa caixa com borda de 1px e cantos arredondados, como os demais quadros. */}
+        <div className={FILTER_BOX} role="group" aria-label="Filtrar por tipo">
           {["todos", "coluna", "subterraneo", ...(hydrants.some((h) => h.type === "bica") ? ["bica"] : [])].map((t) => (
             <button
               key={t}
@@ -60,12 +63,14 @@ export default function HydrantTable({ hydrants, filtered, filters, onFiltersCha
             </button>
           ))}
         </div>
-        <div className="flex gap-1.5 flex-wrap">
+        <div className={FILTER_BOX} role="group" aria-label="Filtrar por situação">
           {["todos", "possivel_de_uso", "inoperante", "nao_localizado"].map((s) => (
             <button
               key={s}
               type="button"
               data-testid={`filter-status-${s}`}
+              title={s === "todos" ? undefined : statusLabel[s]}
+              aria-label={s === "todos" ? "Todas as situações" : statusLabel[s]}
               onClick={() => set({ status: s })}
               className={`px-3 py-1 rounded-full text-[11px] font-mono-t uppercase tracking-widest border transition-colors ${
                 filters.status === s

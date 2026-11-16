@@ -423,7 +423,7 @@ export default function Dashboard() {
                 className="w-full"
               />
               {geocodedCount > routeMaxStops && (
-                <p className="text-[11px] text-slate-500" data-testid="max-stops-note">
+                <p className="text-[11px] text-slate-400" data-testid="max-stops-note">
                   {geocodedCount} hidrantes no mapa · máximo de {routeMaxStops} paradas por rota. A rota escolhe os
                   melhores entre todos eles.
                 </p>
@@ -453,10 +453,10 @@ export default function Dashboard() {
               {routeLoading ? <Loader2 className="w-5 h-5 mr-2 animate-spin" /> : <Navigation className="w-5 h-5 mr-2" />}
               Gerar Rota Otimizada
             </Button>
-            <p className="text-[11px] text-slate-500 leading-relaxed">
+            <p className="text-[11px] text-slate-400 leading-relaxed">
               A rota sempre parte da sua localização (GPS) e a ordem das paradas é otimizada pelo tempo real de carro entre os hidrantes (OSRM). Se você escolher uma primeira parada, ela fica fixa como parada 1.
             </p>
-            <p className="text-[11px] text-slate-600 leading-relaxed" data-testid="privacy-note">
+            <p className="text-[11px] text-slate-400 leading-relaxed" data-testid="privacy-note">
               Privacidade: sua localização fica só no navegador até você gerar a rota. Aí ela é enviada ao serviço de rotas (OSRM) e ao link do Google Maps, apenas para o cálculo, e não é armazenada pelo app.
             </p>
           </div>
