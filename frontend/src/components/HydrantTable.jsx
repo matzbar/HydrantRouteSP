@@ -18,6 +18,7 @@ export const statusColor = {
   sem_vistoria: "#94A3B8",
   outro: "#94A3B8",
 };
+const FILTER_BOX = "flex gap-1.5 flex-wrap items-center rounded-lg bg-[#0B0F17] border border-[#26334D] p-1.5";
 const typeStyle = {
   subterraneo: { backgroundColor: "#1E3A8A33", color: "#93C5FD" },
   coluna: { backgroundColor: "#5B21B633", color: "#C4B5FD" },
@@ -44,7 +45,8 @@ export default function HydrantTable({ hydrants, filtered, filters, onFiltersCha
             className="pl-9 bg-[#0B0F17] border-[#26334D] text-slate-100"
           />
         </div>
-        <div className="flex gap-1.5 flex-wrap">
+        {/* Cada grupo de filtros numa caixa com borda de 1px e cantos arredondados, como os demais quadros. */}
+        <div className={FILTER_BOX} role="group" aria-label="Filtrar por tipo">
           {["todos", "coluna", "subterraneo", ...(hydrants.some((h) => h.type === "bica") ? ["bica"] : [])].map((t) => (
             <button
               key={t}
@@ -61,8 +63,7 @@ export default function HydrantTable({ hydrants, filtered, filters, onFiltersCha
             </button>
           ))}
         </div>
-        {/* Linha de 1px separando os filtros de tipo dos de situação: vertical lado a lado, horizontal no celular. */}
-        <div className="flex gap-1.5 flex-wrap border-t border-[#26334D] pt-2 sm:border-t-0 sm:pt-0 sm:border-l sm:pl-2">
+        <div className={FILTER_BOX} role="group" aria-label="Filtrar por situação">
           {["todos", "possivel_de_uso", "inoperante", "nao_localizado"].map((s) => (
             <button
               key={s}
