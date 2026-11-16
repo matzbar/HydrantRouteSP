@@ -9,7 +9,8 @@ export const statusLabel = {
   nao_localizado: "Não localizado",
   sem_vistoria: "Sem vistoria",
 };
-const statusShort = { possivel_de_uso: "OK", inoperante: "INOP", nao_localizado: "N/LOC" };
+// Siglas dos botões de filtro; o nome completo aparece ao passar o mouse e é o que o leitor de tela anuncia.
+const statusShort = { possivel_de_uso: "OP", inoperante: "INOP", nao_localizado: "N/LOC" };
 export const statusColor = {
   possivel_de_uso: "#10B981",
   inoperante: "#EF4444",
@@ -60,12 +61,15 @@ export default function HydrantTable({ hydrants, filtered, filters, onFiltersCha
             </button>
           ))}
         </div>
-        <div className="flex gap-1.5 flex-wrap">
+        {/* Linha de 1px separando os filtros de tipo dos de situação: vertical lado a lado, horizontal no celular. */}
+        <div className="flex gap-1.5 flex-wrap border-t border-[#26334D] pt-2 sm:border-t-0 sm:pt-0 sm:border-l sm:pl-2">
           {["todos", "possivel_de_uso", "inoperante", "nao_localizado"].map((s) => (
             <button
               key={s}
               type="button"
               data-testid={`filter-status-${s}`}
+              title={s === "todos" ? undefined : statusLabel[s]}
+              aria-label={s === "todos" ? "Todas as situações" : statusLabel[s]}
               onClick={() => set({ status: s })}
               className={`px-3 py-1 rounded-full text-[11px] font-mono-t uppercase tracking-widest border transition-colors ${
                 filters.status === s
