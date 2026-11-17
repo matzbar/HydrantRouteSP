@@ -22,6 +22,8 @@ backend/
   config.py      endereços dos serviços e limites
   tests/         testes unitários (sem rede nem banco)
 frontend/        React (Vite) + Leaflet + Tailwind
+scripts/
+  contar_rotas.py  rotas geradas por dia, pelos logs do Render (últimos 7 dias)
 ```
 
 Em produção é **um único serviço**: o `Dockerfile` compila o React e o FastAPI serve o site e a API (`/api`) na mesma porta. Não é preciso configurar CORS nem `VITE_BACKEND_URL`.
@@ -47,7 +49,7 @@ Todas opcionais. Modelo em [`backend/.env.example`](backend/.env.example).
 | `ROUTE_RATE_LIMIT_PER_MIN` | `20` | Cálculos de rota por minuto por IP |
 | `MAX_ROUTE_STOPS` | `25` | Máximo de paradas por rota. Todos os hidrantes da estação continuam no mapa e entram como candidatos; a rota escolhe os melhores até esse número |
 | `MAX_ROUTE_POINTS` | `350` | Máximo de candidatos por pedido de rota (a maior estação tem 329 hidrantes). Não limita o mapa |
-| `ROUTE_GLOBAL_LIMIT_PER_MIN` | `300` | Cálculos de rota por minuto somando todos os usuários (protege a instância e o OSRM de abuso vindo de muitos IPs) |
+| `ROUTE_GLOBAL_LIMIT_PER_MIN` | `60` | Cálculos de rota por minuto somando todos os usuários (protege a instância e o OSRM de abuso vindo de muitos IPs). 60 = 1 por segundo, o máximo do servidor público do OSRM |
 | `CLIENT_IP_HEADER` | `cf-connecting-ip` no Render, vazio fora | Cabeçalho com o IP do usuário escrito por um proxy confiável (a Cloudflare reescreve o `CF-Connecting-IP`; o cliente não consegue falsificá-lo) |
 | `TRUSTED_PROXY_HOPS` | `2` no Render, `0` fora | Alternativa ao cabeçalho acima: quantos proxies confiáveis acrescentam IPs ao `X-Forwarded-For`. Com `0`, vale o IP da conexão |
 
@@ -68,6 +70,10 @@ docker compose up -d --build        # app + MongoDB
 3. Configure `MONGO_URL` e `DB_NAME`. Pronto: o site e a API sobem na mesma URL.
 
 > Rode com **1 instância/worker**: a fila de localização pelo endereço e os caches ficam na memória do processo.
+
+### Quantas rotas o app gera
+
+`python3 scripts/contar_rotas.py` mostra, por dia, as rotas geradas, as aberturas do app e as consultas de estação, além do pico de rotas por minuto (dados dos logs do Render, que guarda cerca de 7 dias). Precisa de uma chave da API do Render (*Account Settings → API Keys*) na variável `RENDER_API_KEY` ou no arquivo `~/.config/render/api_key`. A chave dá acesso total à conta: crie na hora e apague depois de usar.
 
 ## Desenvolvimento sem Docker
 

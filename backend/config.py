@@ -39,8 +39,9 @@ OSRM_TABLE_MAX = int(os.environ.get("OSRM_TABLE_MAX", "100"))  # limite de coord
 RATE_LIMIT_PER_MIN = int(os.environ.get("RATE_LIMIT_PER_MIN", "120"))
 ROUTE_RATE_LIMIT_PER_MIN = int(os.environ.get("ROUTE_RATE_LIMIT_PER_MIN", "20"))  # cálculo de rota (usa o OSRM)
 # Teto de rotas por minuto somando todos os usuários: segura abuso vindo de muitos IPs ao mesmo tempo, que
-# deixaria a instância única lenta e poderia fazer o OSRM público bloquear o servidor.
-ROUTE_GLOBAL_LIMIT_PER_MIN = int(os.environ.get("ROUTE_GLOBAL_LIMIT_PER_MIN", "300"))
+# deixaria a instância única lenta e poderia fazer o OSRM público bloquear o servidor. 60/min = 1 rota por segundo,
+# o máximo que a política do servidor público do OSRM (FOSSGIS) aceita. Com um OSRM próprio, pode subir.
+ROUTE_GLOBAL_LIMIT_PER_MIN = int(os.environ.get("ROUTE_GLOBAL_LIMIT_PER_MIN", "60"))
 # IP do usuário para o limite de requisições (veja ratelimit.client_ip). O Render define RENDER=true.
 ON_RENDER = bool(os.environ.get("RENDER"))
 # Cabeçalho com o IP do visitante escrito por um proxy confiável. No Render, que fica atrás da Cloudflare, é o
