@@ -23,4 +23,10 @@ export default defineConfig({
     // App de uma página só: um pacote de ~180 KB comprimido é aceitável, sem dividir em pedaços.
     chunkSizeWarningLimit: 700,
   },
+  // Testes do frontend (yarn test): navegador simulado (jsdom), sem rede; arquivos *.test.js(x) em src/.
+  test: {
+    environment: "jsdom",
+    setupFiles: ["src/test/setup.js"],
+    css: false,
+  },
 });

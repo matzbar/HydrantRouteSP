@@ -93,7 +93,7 @@ yarn install --frozen-lockfile
 yarn dev
 ```
 
-Outros comandos do frontend: `yarn lint` (ESLint) e `yarn build` (gera `frontend/build`).
+Outros comandos do frontend: `yarn lint` (ESLint), `yarn test` (testes) e `yarn build` (gera `frontend/build`).
 
 Alternativa: rode `yarn build` no frontend e só o `uvicorn` acima. O backend serve `frontend/build` automaticamente.
 
@@ -106,6 +106,18 @@ cd backend
 pip install -r requirements-dev.txt
 pytest
 ```
+
+Frontend: Vitest + Testing Library num navegador simulado (jsdom), sem rede. Cobrem filtros, enquadramento do mapa,
+escolha do mapa de fundo, chamadas à API e mensagens de erro, rota (inclusive o cancelamento ao trocar de estação),
+consulta da estação e os componentes de busca, tabela e rota, com nomes acessíveis e teclado. Os testes ficam ao
+lado do código (`*.test.js`/`*.test.jsx`).
+
+```bash
+cd frontend
+yarn test
+```
+
+O CI roda os testes do backend e do frontend em todo pull request.
 
 O endpoint de status (`GET /api/`) mostra a versão em execução (`build`) e como o IP do usuário está sendo lido (`client_ip`), sem exibir nenhum IP.
 
