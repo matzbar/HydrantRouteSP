@@ -1,7 +1,7 @@
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "./ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "./ui/dialog";
 import { Button } from "./ui/button";
 import { ExternalLink, Clock, Route, AlertTriangle, Sparkles } from "lucide-react";
-import { statusColor } from "./HydrantTable";
+import { statusColor, statusLabel } from "./HydrantTable";
 
 export default function RouteResult({ open, onClose, result }) {
   if (!result) return null;
@@ -12,6 +12,10 @@ export default function RouteResult({ open, onClose, result }) {
           <DialogTitle className="font-display uppercase tracking-wider text-2xl">
             <span className="text-[#38BDF8]">Rota Otimizada</span> · {result.stops.length} paradas
           </DialogTitle>
+          {/* Lida pelo leitor de tela ao abrir o diálogo; na tela, o conteúdo abaixo já diz isso. */}
+          <DialogDescription className="sr-only">
+            Paradas em ordem de visita, com distância e tempo de cada trecho, e links para abrir a rota no Google Maps.
+          </DialogDescription>
         </DialogHeader>
 
         <div className="grid grid-cols-2 gap-3 my-2">
@@ -45,13 +49,13 @@ export default function RouteResult({ open, onClose, result }) {
           </div>
         )}
 
-        <div className="max-h-[320px] overflow-y-auto pr-1 space-y-2" data-testid="route-stops">
+        <ol className="max-h-[320px] overflow-y-auto pr-1 space-y-2" data-testid="route-stops" aria-label="Paradas da rota">
           {result.stops.map((s) => (
-            <div
+            <li
               key={s.hydrant.id}
               className="flex items-center gap-3 p-3 rounded-lg bg-[#0B0F17] border border-[#26334D]"
             >
-              <div className="w-8 h-8 rounded-full bg-[#38BDF8] text-[#0B0F17] font-display font-black flex items-center justify-center flex-shrink-0">
+              <div aria-hidden="true" className="w-8 h-8 rounded-full bg-[#38BDF8] text-[#0B0F17] font-display font-black flex items-center justify-center flex-shrink-0">
                 {s.order}
               </div>
               <div className="flex-1 min-w-0">
@@ -59,23 +63,26 @@ export default function RouteResult({ open, onClose, result }) {
                   <span className="font-mono-t font-bold text-white text-sm">{s.hydrant.code}</span>
                   <span
                     className="status-dot"
+                    aria-hidden="true"
                     style={{ backgroundColor: statusColor[s.hydrant.status] || statusColor.outro }}
                   />
+                  {/* A cor da bolinha diz a situação; o leitor de tela recebe o nome dela. */}
+                  <span className="sr-only">{statusLabel[s.hydrant.status] || s.hydrant.status_label}</span>
                 </div>
                 <div className="text-xs text-slate-400 truncate" title={s.hydrant.address}>
                   {s.hydrant.address}
                 </div>
-                <div className="text-[10px] text-slate-500 font-mono-t">
+                <div className="text-[10px] text-slate-400 font-mono-t">
                   {s.hydrant.municipality} · Setor {s.hydrant.sector || "—"}
                 </div>
               </div>
-              <div className="text-right text-[10px] font-mono-t text-slate-500 uppercase tracking-widest">
+              <div className="text-right text-[10px] font-mono-t text-slate-400 uppercase tracking-widest">
                 +{s.distance_from_prev_km.toFixed(1)} km
                 <div>+{Math.round(s.duration_from_prev_min)} min</div>
               </div>
-            </div>
+            </li>
           ))}
-        </div>
+        </ol>
 
         {(result.google_maps_segments?.length || 0) > 1 ? (
           <div className="space-y-2" data-testid="google-maps-segments">
