@@ -6,6 +6,7 @@ import AppHeader from "../components/AppHeader";
 import EmptyState from "../components/EmptyState";
 import GeocodeStatusBar from "../components/GeocodeStatusBar";
 import GpsConsent from "../components/GpsConsent";
+import IosInstallHelp from "../components/IosInstallHelp";
 import HydrantTable from "../components/HydrantTable";
 import MapPanel from "../components/MapPanel";
 import RoutePanel from "../components/RoutePanel";
@@ -13,6 +14,7 @@ import RouteResult from "../components/RouteResult";
 import StationCard from "../components/StationCard";
 import StatsBar from "../components/StatsBar";
 import useGps from "../hooks/useGps";
+import useInstallApp from "../hooks/useInstallApp";
 import useMapConfig from "../hooks/useMapConfig";
 import useRoute from "../hooks/useRoute";
 import useStationData from "../hooks/useStationData";
@@ -33,6 +35,7 @@ export default function Dashboard() {
   const { data, loading: stationLoading, error: stationErr, reload, retryGeocode } = useStationData(sel.code);
   const { gps, gpsErr, needsConsent, requestGps, declineGps } = useGps();
   const route = useRoute();
+  const installApp = useInstallApp();
   const clearRoute = route.clear;
 
   const [maxStops, setMaxStops] = useState(DEFAULT_STOPS);
@@ -125,7 +128,7 @@ export default function Dashboard() {
       <Toaster theme="dark" position="top-right" richColors />
       <div className="grain-overlay" />
 
-      <AppHeader gps={gps} gpsErr={gpsErr} onRefreshGps={requestGps} />
+      <AppHeader gps={gps} gpsErr={gpsErr} onRefreshGps={requestGps} onInstall={installApp.canInstall ? installApp.install : null} />
 
       <div className="max-w-[1600px] mx-auto px-4 sm:px-6 pt-6">
         <StatsBar hydrants={hydrants} onMap={onMap} />
@@ -192,6 +195,7 @@ export default function Dashboard() {
 
       <RouteResult open={route.open} onClose={route.setOpen} result={route.route} />
       <GpsConsent open={needsConsent} onAccept={requestGps} onDecline={declineGps} />
+      <IosInstallHelp open={installApp.iosHelpOpen} onClose={installApp.closeIosHelp} />
     </div>
   );
 }
