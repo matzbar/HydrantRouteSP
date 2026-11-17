@@ -7,6 +7,13 @@ import "@/fonts";
 import "@/index.css";
 import App from "@/App";
 
+// Service worker (public/sw.js): deixa o app instalável e abre a "casca" sem internet. Só no site publicado.
+if (import.meta.env.PROD && "serviceWorker" in navigator) {
+  window.addEventListener("load", () => {
+    navigator.serviceWorker.register("/sw.js").catch(() => { /* sem service worker o app funciona igual */ });
+  });
+}
+
 ReactDOM.createRoot(document.getElementById("root")).render(
   <StrictMode>
     <App />

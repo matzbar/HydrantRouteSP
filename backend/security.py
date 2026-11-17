@@ -48,7 +48,9 @@ def cache_control(path: str) -> Optional[str]:
         return None
     if path.startswith("/assets/"):
         return CACHE_ASSETS
-    if path == "/" or path.endswith(".html"):
+    # A página, o service worker e o manifesto do app instalável: sempre conferidos, para uma versão nova chegar
+    # na hora (um service worker guardado por 1 dia atrasaria as atualizações do app instalado).
+    if path == "/" or path.endswith(".html") or path in ("/sw.js", "/manifest.webmanifest"):
         return CACHE_PAGE
     return CACHE_OTHER
 

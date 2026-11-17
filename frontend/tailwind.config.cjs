@@ -64,5 +64,9 @@ module.exports = {
       }
     }
   },
-  plugins: [require("tailwindcss-animate")],
+  plugins: [
+    require("tailwindcss-animate"),
+    // touch: vale só em telas de toque (celular, tablet). Áreas de toque e letras maiores ali; no computador, igual.
+    ({ addVariant }) => addVariant("touch", "@media (pointer: coarse)"),
+  ],
 };

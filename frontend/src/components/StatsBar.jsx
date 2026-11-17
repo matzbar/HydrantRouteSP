@@ -16,7 +16,7 @@ export default function StatsBar({ hydrants, onMap }) {
     <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
       {stats.map((s) => (
         <div key={s.id} className="tactical-card p-4" data-testid={`stat-${s.id}`}>
-          <div className="font-mono-t text-[10px] uppercase tracking-widest text-slate-400">{s.label}</div>
+          <div className="font-mono-t text-label uppercase tracking-widest text-slate-400">{s.label}</div>
           <div className={`font-display font-black text-3xl mt-1 ${s.color}`}>{s.value}</div>
         </div>
       ))}

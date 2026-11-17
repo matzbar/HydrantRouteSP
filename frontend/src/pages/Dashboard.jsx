@@ -5,6 +5,7 @@ import { Button } from "../components/ui/button";
 import AppHeader from "../components/AppHeader";
 import EmptyState from "../components/EmptyState";
 import GeocodeStatusBar from "../components/GeocodeStatusBar";
+import GpsConsent from "../components/GpsConsent";
 import HydrantTable from "../components/HydrantTable";
 import MapPanel from "../components/MapPanel";
 import RoutePanel from "../components/RoutePanel";
@@ -30,7 +31,7 @@ export default function Dashboard() {
   const { tiles, mapFallback, routeMaxStops } = useMapConfig();
   const { stations, loading: stationsLoading, sel, setSel } = useStations();
   const { data, loading: stationLoading, error: stationErr, reload, retryGeocode } = useStationData(sel.code);
-  const { gps, gpsErr, requestGps } = useGps();
+  const { gps, gpsErr, needsConsent, requestGps, declineGps } = useGps();
   const route = useRoute();
   const clearRoute = route.clear;
 
@@ -175,7 +176,7 @@ export default function Dashboard() {
             <div className="flex flex-col sm:flex-row sm:items-baseline justify-between gap-1 mb-4">
               <h2 className="font-display text-lg font-bold uppercase tracking-wider">Hidrantes Pendentes de Vistoria</h2>
               {data?.cycle && (
-                <span className="font-mono-t text-[10px] uppercase tracking-widest text-slate-400">Ciclo {data.cycle}</span>
+                <span className="font-mono-t text-label uppercase tracking-widest text-slate-400">Ciclo {data.cycle}</span>
               )}
             </div>
             {listBody}
@@ -183,13 +184,14 @@ export default function Dashboard() {
         </section>
       </main>
 
-      <footer className="border-t border-line py-6 text-center">
-        <p className="text-[10px] font-mono-t uppercase tracking-widest text-slate-400">
+      <footer className="border-t border-line pt-6 safe-bottom text-center">
+        <p className="text-label font-mono-t uppercase tracking-widest text-slate-400">
           HydrantRoute SP · Dados ao vivo do CB SP · OpenStreetMap · OSRM · Google Maps · Desenvolvido por CB MANOSSO
         </p>
       </footer>
 
       <RouteResult open={route.open} onClose={route.setOpen} result={route.route} />
+      <GpsConsent open={needsConsent} onAccept={requestGps} onDecline={declineGps} />
     </div>
   );
 }

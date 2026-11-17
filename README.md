@@ -97,6 +97,21 @@ Outros comandos do frontend: `yarn lint` (ESLint), `yarn test` (testes) e `yarn 
 
 Alternativa: rode `yarn build` no frontend e só o `uvicorn` acima. O backend serve `frontend/build` automaticamente.
 
+## App no celular (instalável)
+
+O site é um app instalável (PWA): no Android, o Chrome oferece "Instalar app"; no iPhone, use Compartilhar →
+"Adicionar à Tela de Início". O app abre em tela cheia, com ícone próprio, e a "casca" abre sem internet (os dados
+dos hidrantes precisam de conexão).
+
+- `frontend/public/manifest.webmanifest`: nome, cores e ícones (`icon-192.png`, `icon-512.png`, `icon-maskable-512.png`;
+  `apple-touch-icon.png` para o iPhone).
+- `frontend/public/sw.js`: service worker. A página vem sempre da rede (versão nova chega na hora); os arquivos de
+  `assets/` ficam guardados; a API e os mapas nunca são guardados.
+- Localização: o navegador só pergunta depois que a pessoa toca em "Usar minha localização" no aviso de abertura ou
+  no botão do GPS. "Agora não" fica lembrado no aparelho.
+- Em telas de toque, botões e campos têm 44 px e os textos pequenos sobem para 12–13 px (variante `touch:` do
+  Tailwind e classes `text-label`/`text-note`); no computador, o visual não muda.
+
 ## Testes
 
 Testes unitários, sem rede e sem banco (usam cópias das páginas do CB SP em `backend/tests/fixtures`):
@@ -135,7 +150,7 @@ O GitHub Actions ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)) roda o
 ## Privacidade e serviços externos
 
 - As fontes (Inter, Barlow Condensed e JetBrains Mono) vêm embutidas no app (pacotes Fontsource, `frontend/src/fonts.js`): o navegador não contata o Google Fonts.
-- A localização do usuário (GPS) só sai do navegador ao gerar a rota: vai ao OSRM e ao link do Google Maps. O app não a grava nem a registra em log.
+- A localização do usuário (GPS) só é pedida depois de um aviso explicando o uso e de um toque da pessoa. Ela só sai do navegador ao gerar a rota: vai ao OSRM e ao link do Google Maps. O app não a grava nem a registra em log.
 - Resultados do geocodificador ArcGIS World ficam só na memória (os termos dele não permitem guardá-los sem conta paga). Os do Photon/Nominatim (OpenStreetMap) podem ir para o MongoDB.
 - Bancos criados por versões antigas podem ter registros sem origem no `geocache` (parte do ArcGIS World) e a coleção `hydrants` do cadastro antigo. O script `backend/scripts/limpar_banco.py` remove os dois. Ele só simula por padrão; use `--aplicar` para apagar:
 
