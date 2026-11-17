@@ -1,16 +1,16 @@
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "./ui/dialog";
 import { Button } from "./ui/button";
 import { ExternalLink, Clock, Route, AlertTriangle, Sparkles } from "lucide-react";
-import { statusColor, statusLabel } from "./HydrantTable";
+import { colorOfStatus, statusLabel } from "../lib/hydrants";
 
 export default function RouteResult({ open, onClose, result }) {
   if (!result) return null;
   return (
     <Dialog open={open} onOpenChange={onClose}>
-      <DialogContent className="bg-[#121824] border-[#26334D] text-slate-100 max-w-2xl w-[calc(100%-1.5rem)] max-h-[90dvh] overflow-y-auto rounded-lg" data-testid="route-result-dialog">
+      <DialogContent className="bg-surface border-line text-slate-100 max-w-2xl w-[calc(100%-1.5rem)] max-h-[90dvh] overflow-y-auto rounded-lg" data-testid="route-result-dialog">
         <DialogHeader>
           <DialogTitle className="font-display uppercase tracking-wider text-2xl">
-            <span className="text-[#38BDF8]">Rota Otimizada</span> · {result.stops.length} paradas
+            <span className="text-route">Rota Otimizada</span> · {result.stops.length} paradas
           </DialogTitle>
           {/* Lida pelo leitor de tela ao abrir o diálogo; na tela, o conteúdo abaixo já diz isso. */}
           <DialogDescription className="sr-only">
@@ -53,9 +53,9 @@ export default function RouteResult({ open, onClose, result }) {
           {result.stops.map((s) => (
             <li
               key={s.hydrant.id}
-              className="flex items-center gap-3 p-3 rounded-lg bg-[#0B0F17] border border-[#26334D]"
+              className="flex items-center gap-3 p-3 rounded-lg bg-page border border-line"
             >
-              <div aria-hidden="true" className="w-8 h-8 rounded-full bg-[#38BDF8] text-[#0B0F17] font-display font-black flex items-center justify-center flex-shrink-0">
+              <div aria-hidden="true" className="w-8 h-8 rounded-full bg-route text-page font-display font-black flex items-center justify-center flex-shrink-0">
                 {s.order}
               </div>
               <div className="flex-1 min-w-0">
@@ -64,7 +64,7 @@ export default function RouteResult({ open, onClose, result }) {
                   <span
                     className="status-dot"
                     aria-hidden="true"
-                    style={{ backgroundColor: statusColor[s.hydrant.status] || statusColor.outro }}
+                    style={{ backgroundColor: colorOfStatus(s.hydrant.status) }}
                   />
                   {/* A cor da bolinha diz a situação; o leitor de tela recebe o nome dela. */}
                   <span className="sr-only">{statusLabel[s.hydrant.status] || s.hydrant.status_label}</span>
@@ -132,10 +132,10 @@ function OptimizationNote({ opt }) {
   const fmt = (v) => v.toLocaleString("pt-BR", { maximumFractionDigits: 1 });
   return (
     <div
-      className="flex items-start gap-2 rounded-lg border border-[#38BDF8]/30 bg-[#38BDF8]/10 p-3 text-xs text-sky-100"
+      className="flex items-start gap-2 rounded-lg border border-route/30 bg-route/10 p-3 text-xs text-sky-100"
       data-testid="route-optimization"
     >
-      <Sparkles className="w-4 h-4 mt-0.5 flex-shrink-0 text-[#38BDF8]" />
+      <Sparkles className="w-4 h-4 mt-0.5 flex-shrink-0 text-route" />
       <div className="space-y-0.5">
         <div className="font-semibold">
           {opt.saved_min >= 0.5

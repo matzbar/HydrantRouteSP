@@ -1,17 +1,15 @@
 import { useEffect, useMemo } from "react";
 import { MapContainer, TileLayer, Marker, Popup, Polyline, useMap, useMapEvents } from "react-leaflet";
 import L from "leaflet";
-import { typeLabel, statusLabel, statusColor } from "./HydrantTable";
+import { colorOfStatus, statusLabel, typeColor, typeLabel } from "../lib/hydrants";
 import { SP_CENTER, mapView } from "../lib/mapView";
-
-const typeColor = { subterraneo: "#3B82F6", coluna: "#8B5CF6", bica: "#14B8A6" };
 
 const escapeHtml = (s) =>
   String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 
 function buildIcon(h, idx) {
-  const bg = typeColor[h.type] || "#64748B";
-  const ring = statusColor[h.status] || statusColor.outro;
+  const bg = typeColor[h.type] || typeColor.outro;
+  const ring = colorOfStatus(h.status);
   const label = idx != null ? String(idx) : (h.code || "H").slice(-3);
   return L.divIcon({
     className: "hydrant-pin",
@@ -41,6 +39,9 @@ function FitView({ view, fitKey }) {
   }, [fitKey, map]);
   return null;
 }
+
+// Linha da rota: mesma cor de "route" no tema (o Leaflet desenha em SVG e precisa do valor).
+const ROUTE_LINE = { color: "#38BDF8", weight: 4, opacity: 0.85, dashArray: "8 6" };
 
 const POPUP_MARGIN_PX = 8;
 const AUTOPAN_WAIT_MS = 300; // o autoPan do Leaflet anima por ~250 ms; o ajuste roda depois dele
@@ -75,7 +76,7 @@ export default function HydrantMap({ tiles, hydrants, gps, routeOrder, routePoly
   }, [routeOrder]);
 
   return (
-    <div className="w-full h-full rounded-lg overflow-hidden border border-[#26334D] relative z-0 isolate" data-testid="hydrant-map">
+    <div className="w-full h-full rounded-lg overflow-hidden border border-line relative z-0 isolate" data-testid="hydrant-map">
       <MapContainer
         center={SP_CENTER}
         zoom={12}
@@ -104,28 +105,30 @@ export default function HydrantMap({ tiles, hydrants, gps, routeOrder, routePoly
           return (
             <Marker key={h.id} position={[h.lat, h.lon]} icon={buildIcon(h, idx)}>
               <Popup>
-                <div style={{ fontFamily: "Inter, sans-serif", minWidth: 200 }}>
-                  <div style={{ fontWeight: 700, fontSize: 14 }}>{h.code}</div>
-                  <div style={{ color: "#94A3B8", fontSize: 12, textTransform: "uppercase" }}>
+                <div className="hydrant-popup">
+                  <div className="hydrant-popup__code">{h.code}</div>
+                  <div className="hydrant-popup__kind">
                     {typeLabel[h.type] || h.type_label} ·{" "}
-                    <span style={{ color: statusColor[h.status] || statusColor.outro }}>
+                    <span style={{ color: colorOfStatus(h.status) }}>
                       {statusLabel[h.status] || h.status_label}
                     </span>
                   </div>
-                  <div style={{ marginTop: 6, fontSize: 13 }}>{h.address}</div>
-                  <div style={{ marginTop: 2, fontSize: 11, color: "#94A3B8" }}>
+                  <div className="hydrant-popup__address">{h.address}</div>
+                  <div className="hydrant-popup__meta">
                     {h.municipality} · Setor {h.sector || "—"}{h.flow ? ` · Vazão ${h.flow}` : ""}
                   </div>
-                  <div style={{ marginTop: 4, fontSize: 11, color: h.location_source === "oficial" ? "#10B981" : "#F59E0B" }}>
-                    {h.location_source === "oficial" ? "Posição oficial (mapa do CB SP)" : "Posição aproximada pelo endereço"}
-                  </div>
+                  {h.location_source === "oficial" ? (
+                    <div className="hydrant-popup__source text-ok">Posição oficial (mapa do CB SP)</div>
+                  ) : (
+                    <div className="hydrant-popup__source text-amber-500">Posição aproximada pelo endereço</div>
+                  )}
                 </div>
               </Popup>
             </Marker>
           );
         })}
         {routePolyline && routePolyline.length > 1 && (
-          <Polyline positions={routePolyline} pathOptions={{ color: "#38BDF8", weight: 4, opacity: 0.85, dashArray: "8 6" }} />
+          <Polyline positions={routePolyline} pathOptions={ROUTE_LINE} />
         )}
       </MapContainer>
     </div>

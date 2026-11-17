@@ -13,8 +13,8 @@ export function selectionFromStation(station) {
   return { cmd: station.cmd, gb: station.gb, sgb: station.sgb, code: station.code };
 }
 
-const triggerCls = "bg-[#0B0F17] border-[#26334D] text-slate-100";
-const contentCls = "bg-[#121824] border-[#26334D] text-slate-100 max-h-72";
+const triggerCls = "bg-page border-line text-slate-100";
+const contentCls = "bg-surface border-line text-slate-100 max-h-72";
 const labelCls = "font-mono-t text-[10px] uppercase tracking-widest text-slate-400";
 
 function Field({ id, label, value, onChange, options, placeholder, disabled, testId }) {

@@ -2,27 +2,25 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Cores do app, em canais RGB para o Tailwind aplicar transparência (ex.: bg-page/90). No JSX elas viram classes
+   (bg-page, border-line, text-route...; veja tailwind.config.cjs); aqui, rgb(var(--color-...)). */
 :root {
-  --bg-dark: #0B0F17;
-  --surface-card: #121824;
-  --surface-elevated: #1A2234;
-  --border-tactical: #26334D;
-  --text-primary: #F8FAFC;
-  --text-secondary: #94A3B8;
-  --text-muted: #64748B;
-  --fire-red: #EF4444;
-  --fire-red-hover: #DC2626;
-  --tactical-amber: #F59E0B;
-  --status-op: #10B981;
-  --status-inop: #EF4444;
-  --type-sub: #3B82F6;
-  --type-col: #8B5CF6;
-  --route-path: #38BDF8;
+  --color-page: 11 15 23;         /* #0B0F17 fundo da página */
+  --color-surface: 18 24 36;      /* #121824 quadros */
+  --color-elevated: 26 34 52;     /* #1A2234 realce, hover */
+  --color-line: 38 51 77;         /* #26334D bordas */
+  --color-line-strong: 56 71 95;  /* #38475F bordas em destaque */
+  --color-text: 248 250 252;      /* #F8FAFC texto principal */
+  --color-text-muted: 148 163 184;/* #94A3B8 texto secundário */
+  --color-fire: 239 68 68;        /* #EF4444 vermelho da marca, inoperante */
+  --color-fire-hover: 220 38 38;  /* #DC2626 */
+  --color-route: 56 189 248;      /* #38BDF8 rota, GPS, destaques */
+  --color-ok: 16 185 129;         /* #10B981 possível de uso */
 }
 
 html, body, #root {
-  background-color: var(--bg-dark);
-  color: var(--text-primary);
+  background-color: rgb(var(--color-page));
+  color: rgb(var(--color-text));
   min-height: 100vh;
 }
 
@@ -72,7 +70,7 @@ body {
 
 /* Leaflet dark tweaks */
 .leaflet-container {
-  background: #0B0F17 !important;
+  background: rgb(var(--color-page)) !important;
   font-family: 'Inter', sans-serif;
 }
 .leaflet-tile {
@@ -80,19 +78,27 @@ body {
 }
 .leaflet-control-attribution,
 .leaflet-control-zoom a {
-  background: rgba(18, 24, 36, 0.9) !important;
-  color: #94A3B8 !important;
-  border-color: #26334D !important;
+  background: rgb(var(--color-surface) / 0.9) !important;
+  color: rgb(var(--color-text-muted)) !important;
+  border-color: rgb(var(--color-line)) !important;
 }
 .leaflet-control-zoom a {
-  border: 1px solid #26334D !important;
+  border: 1px solid rgb(var(--color-line)) !important;
 }
 .leaflet-popup-content-wrapper,
 .leaflet-popup-tip {
-  background: #121824 !important;
-  color: #F8FAFC !important;
-  border: 1px solid #26334D;
+  background: rgb(var(--color-surface)) !important;
+  color: rgb(var(--color-text)) !important;
+  border: 1px solid rgb(var(--color-line));
 }
+
+/* Popup do marcador */
+.hydrant-popup { font-family: 'Inter', sans-serif; min-width: 200px; }
+.hydrant-popup__code { font-weight: 700; font-size: 14px; }
+.hydrant-popup__kind { color: rgb(var(--color-text-muted)); font-size: 12px; text-transform: uppercase; }
+.hydrant-popup__address { margin-top: 6px; font-size: 13px; }
+.hydrant-popup__meta { margin-top: 2px; font-size: 11px; color: rgb(var(--color-text-muted)); }
+.hydrant-popup__source { margin-top: 4px; font-size: 11px; }
 
 /* Custom hydrant marker */
 .hydrant-pin {
@@ -104,7 +110,7 @@ body {
   height: 32px;
   border-radius: 50% 50% 50% 0;
   transform: rotate(-45deg);
-  border: 2px solid #0B0F17;
+  border: 2px solid rgb(var(--color-page));
   box-shadow: 0 2px 8px rgba(0,0,0,0.45);
   display: flex;
   align-items: center;
@@ -123,16 +129,16 @@ body {
 .gps-pin-dot {
   width: 20px;
   height: 20px;
-  background: #38BDF8;
-  border: 3px solid #0B0F17;
+  background: rgb(var(--color-route));
+  border: 3px solid rgb(var(--color-page));
   border-radius: 50%;
-  box-shadow: 0 0 0 4px rgba(56, 189, 248, 0.25);
+  box-shadow: 0 0 0 4px rgb(var(--color-route) / 0.25);
   animation: gpsPulse 1.8s ease-out infinite;
 }
 @keyframes gpsPulse {
-  0% { box-shadow: 0 0 0 0 rgba(56, 189, 248, 0.6); }
-  70% { box-shadow: 0 0 0 16px rgba(56, 189, 248, 0); }
-  100% { box-shadow: 0 0 0 0 rgba(56, 189, 248, 0); }
+  0% { box-shadow: 0 0 0 0 rgb(var(--color-route) / 0.6); }
+  70% { box-shadow: 0 0 0 16px rgb(var(--color-route) / 0); }
+  100% { box-shadow: 0 0 0 0 rgb(var(--color-route) / 0); }
 }
 @media (prefers-reduced-motion: reduce) {
   .gps-pin-dot { animation: none; }
@@ -140,29 +146,29 @@ body {
 
 /* Scrollbar */
 ::-webkit-scrollbar { width: 8px; height: 8px; }
-::-webkit-scrollbar-track { background: #121824; }
-::-webkit-scrollbar-thumb { background: #26334D; border-radius: 4px; }
-::-webkit-scrollbar-thumb:hover { background: #38475F; }
+::-webkit-scrollbar-track { background: rgb(var(--color-surface)); }
+::-webkit-scrollbar-thumb { background: rgb(var(--color-line)); border-radius: 4px; }
+::-webkit-scrollbar-thumb:hover { background: rgb(var(--color-line-strong)); }
 
 /* Tactical card */
 .tactical-card {
-  background: var(--surface-card);
-  border: 1px solid var(--border-tactical);
+  background: rgb(var(--color-surface));
+  border: 1px solid rgb(var(--color-line));
   border-radius: 8px;
 }
 .tactical-elevated {
-  background: var(--surface-elevated);
-  border: 1px solid var(--border-tactical);
+  background: rgb(var(--color-elevated));
+  border: 1px solid rgb(var(--color-line));
 }
 
 .btn-tactical-red {
-  background: var(--fire-red);
+  background: rgb(var(--color-fire));
   color: white;
   transition: background-color 180ms ease, transform 100ms ease, box-shadow 200ms ease;
 }
 .btn-tactical-red:hover {
-  background: var(--fire-red-hover);
-  box-shadow: 0 0 0 4px rgba(239, 68, 68, 0.18);
+  background: rgb(var(--color-fire-hover));
+  box-shadow: 0 0 0 4px rgb(var(--color-fire) / 0.18);
 }
 .btn-tactical-red:active {
   transform: translateY(1px);
