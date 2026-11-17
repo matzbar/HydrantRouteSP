@@ -20,7 +20,7 @@ export default defineConfig({
     // O backend serve frontend/build (veja STATIC_DIR em backend/server.py e o Dockerfile).
     outDir: "build",
     sourcemap: false,
-    // App de uma página só: um pacote de ~180 KB comprimido é aceitável, sem dividir em pedaços.
+    // O mapa (Leaflet) é carregado à parte (veja components/MapPanel.jsx); o resto fica num pacote só.
     chunkSizeWarningLimit: 700,
   },
   // Testes do frontend (yarn test): navegador simulado (jsdom), sem rede; arquivos *.test.js(x) em src/.

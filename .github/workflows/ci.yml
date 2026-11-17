@@ -61,6 +61,10 @@ jobs:
           echo "API responde:";            curl -fsS http://localhost:8000/api/ | grep '"status":"ok"'
           echo "Site (React) servido:";    curl -fsS http://localhost:8000/ | grep -c '<div id="root">'
           echo "Cabeçalho de segurança:";  curl -fsSI http://localhost:8000/ | grep -i '^content-security-policy:' | cut -c1-60
+          echo "Cache da página:";         curl -fsSI http://localhost:8000/ | grep -i '^cache-control: no-cache'
+          asset=$(curl -fsS http://localhost:8000/ | grep -o '/assets/index-[^"]*\.js' | head -1)
+          echo "Cache dos arquivos:";      curl -fsSI "http://localhost:8000$asset" | grep -i '^cache-control:.*immutable'
+          echo "Ícone do site:";           curl -fsSI http://localhost:8000/favicon.svg | grep -i '^content-type: image/svg+xml'
           echo "Usuário sem root:";        docker exec app id -u | grep -x 10001
           echo "HEALTHCHECK do Docker:"
           for _ in $(seq 1 30); do

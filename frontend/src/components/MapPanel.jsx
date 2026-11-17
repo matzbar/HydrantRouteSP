@@ -1,5 +1,9 @@
-import { MapPin } from "lucide-react";
-import HydrantMap from "./HydrantMap";
+import { Suspense, lazy } from "react";
+import { Loader2, MapPin } from "lucide-react";
+
+// O mapa (Leaflet) é a maior parte do código do app. Carregado à parte, ele não atrasa o resto da página:
+// lista, estação e rota aparecem primeiro, e o mapa chega logo depois.
+const HydrantMap = lazy(() => import("./HydrantMap"));
 
 /** Quadro do mapa: contagem de hidrantes no mapa, aviso de mapa alternativo e o mapa em si. */
 export default function MapPanel({ tiles, mapFallback, hydrants, gps, route, fitKey, onMap, allOnMap, filtering }) {
@@ -26,14 +30,25 @@ export default function MapPanel({ tiles, mapFallback, hydrants, gps, route, fit
           Mapa alternativo em uso (OpenStreetMap)
         </div>
       )}
-      <HydrantMap
-        tiles={tiles}
-        hydrants={hydrants}
-        gps={gps}
-        routeOrder={routeOrder}
-        routePolyline={routePolyline}
-        fitKey={fitKey}
-      />
+      <Suspense fallback={<MapLoading />}>
+        <HydrantMap
+          tiles={tiles}
+          hydrants={hydrants}
+          gps={gps}
+          routeOrder={routeOrder}
+          routePolyline={routePolyline}
+          fitKey={fitKey}
+        />
+      </Suspense>
+    </div>
+  );
+}
+
+function MapLoading() {
+  return (
+    <div className="w-full h-full rounded-lg border border-line bg-page flex items-center justify-center gap-2 text-sm text-slate-400"
+      data-testid="map-loading">
+      <Loader2 className="w-4 h-4 animate-spin" /> Carregando mapa...
     </div>
   );
 }
