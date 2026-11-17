@@ -1,5 +1,5 @@
 """Cabeçalhos de segurança aplicados a todas as respostas (site e API)."""
-from typing import Dict
+from typing import Dict, Optional
 
 # Content Security Policy: de onde a página pode carregar cada tipo de recurso.
 #  - scripts: só do próprio site (o build do Vite não tem scripts inline);
@@ -32,6 +32,25 @@ SECURITY_HEADERS: Dict[str, str] = {
 }
 
 HSTS = "max-age=31536000"  # só em HTTPS: o navegador passa a recusar a versão sem criptografia por 1 ano
+
+
+# Cache dos arquivos do site. Os de assets/ têm um hash no nome que muda a cada versão: podem ficar guardados no
+# navegador por 1 ano sem risco de servir versão velha. A página (index.html) é sempre conferida, para que uma
+# versão nova chegue na hora. As respostas da API não entram aqui.
+CACHE_ASSETS = "public, max-age=31536000, immutable"
+CACHE_PAGE = "no-cache"
+CACHE_OTHER = "public, max-age=86400"  # ícone do site e afins: 1 dia
+
+
+def cache_control(path: str) -> Optional[str]:
+    """Cache-Control para um arquivo do site servido em `path`; None para a API."""
+    if path.startswith("/api"):
+        return None
+    if path.startswith("/assets/"):
+        return CACHE_ASSETS
+    if path == "/" or path.endswith(".html"):
+        return CACHE_PAGE
+    return CACHE_OTHER
 
 
 def security_headers(forwarded_proto: str) -> Dict[str, str]:

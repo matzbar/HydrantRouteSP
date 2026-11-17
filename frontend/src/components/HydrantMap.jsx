@@ -7,17 +7,28 @@ import { SP_CENTER, mapView } from "../lib/mapView";
 const escapeHtml = (s) =>
   String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 
-function buildIcon(h, idx) {
+// Ícones já criados, por cor do tipo, cor da situação e texto. Com o mesmo objeto, o react-leaflet não redesenha o
+// marcador: digitar na busca ou mudar o filtro não recria os até ~330 ícones da estação.
+const ICONS = new Map();
+
+/** Ícone do marcador: cor do tipo no preenchimento, cor da situação no contorno e a ordem na rota (ou o código). */
+export function hydrantIcon(h, idx) {
   const bg = typeColor[h.type] || typeColor.outro;
   const ring = colorOfStatus(h.status);
   const label = idx != null ? String(idx) : (h.code || "H").slice(-3);
-  return L.divIcon({
-    className: "hydrant-pin",
-    html: `<div class="hydrant-pin-inner" style="background:${bg};outline:3px solid ${ring};outline-offset:-5px"><span>${escapeHtml(label)}</span></div>`,
-    iconSize: [32, 32],
-    iconAnchor: [16, 32],
-    popupAnchor: [0, -28],
-  });
+  const key = `${bg}|${ring}|${label}`;
+  let icon = ICONS.get(key);
+  if (!icon) {
+    icon = L.divIcon({
+      className: "hydrant-pin",
+      html: `<div class="hydrant-pin-inner" style="background:${bg};outline:3px solid ${ring};outline-offset:-5px"><span>${escapeHtml(label)}</span></div>`,
+      iconSize: [32, 32],
+      iconAnchor: [16, 32],
+      popupAnchor: [0, -28],
+    });
+    ICONS.set(key, icon);
+  }
+  return icon;
 }
 
 const gpsIcon = L.divIcon({
@@ -103,7 +114,7 @@ export default function HydrantMap({ tiles, hydrants, gps, routeOrder, routePoly
         {geocoded.map((h) => {
           const idx = orderIndex?.get(h.id);
           return (
-            <Marker key={h.id} position={[h.lat, h.lon]} icon={buildIcon(h, idx)}>
+            <Marker key={h.id} position={[h.lat, h.lon]} icon={hydrantIcon(h, idx)}>
               <Popup>
                 <div className="hydrant-popup">
                   <div className="hydrant-popup__code">{h.code}</div>

@@ -27,7 +27,7 @@ from config import (BUILD_COMMIT, CB_INDEX_URL, CLIENT_IP_HEADER, MAPTILER_CUTOF
                     MAPTILER_STYLE, MAX_ROUTE_POINTS, MAX_ROUTE_STOPS, MONITOR_CLIENT_KEY, MONITOR_URL, ON_RENDER, OSRM_TABLE_MAX, RATE_LIMIT_PER_MIN, ROUTE_GLOBAL_LIMIT_PER_MIN,
                     ROUTE_RATE_LIMIT_PER_MIN, SP_BOUNDS, STATION_CODE_PATTERN, TRUSTED_PROXY_HOPS)
 from ratelimit import RateLimiter, client_ip
-from security import security_headers
+from security import cache_control, security_headers
 from routing import (build_google_maps_url, estimated_matrices, haversine_km, nearest_neighbor, optimize_open_path,
                      path_cost)
 
@@ -127,7 +127,8 @@ async def rate_limit(request: Request, call_next):
 
 @app.middleware("http")
 async def add_security_headers(request: Request, call_next):
-    """Cabeçalhos de segurança (CSP, anti-iframe, HSTS em HTTPS...) em todas as respostas, inclusive as de erro.
+    """Cabeçalhos de segurança (CSP, anti-iframe, HSTS em HTTPS...) em todas as respostas, inclusive as de erro,
+    e o cache dos arquivos do site (veja security.cache_control).
 
     Fica registrado depois do limitador para ser o mais externo (o último registrado roda primeiro) e assim
     cobrir também as respostas 429.
@@ -135,6 +136,9 @@ async def add_security_headers(request: Request, call_next):
     response = await call_next(request)
     for name, value in security_headers(request.headers.get("x-forwarded-proto", request.url.scheme)).items():
         response.headers.setdefault(name, value)
+    cache = cache_control(request.url.path)
+    if cache and response.status_code in (200, 304):
+        response.headers["Cache-Control"] = cache
     return response
 
 

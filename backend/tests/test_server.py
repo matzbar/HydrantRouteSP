@@ -9,6 +9,7 @@ import cb_sp
 import geocoding
 import osrm
 import routing
+import security
 import server
 
 FIXTURES = Path(__file__).parent / "fixtures"
@@ -622,3 +623,31 @@ def test_csp_serves_fonts_only_from_the_app(client):
 def test_csp_allows_maptiler_probe(client):
     csp = client.get("/api/").headers["content-security-policy"]
     assert "connect-src 'self' https://api.maptiler.com" in csp
+
+
+# ----------------------------- Links do CB SP e cache do site -----------------------------
+@pytest.mark.parametrize("href, expected", [
+    ("../03individual/15214.html", "https://cbaplang.corpodebombeiros.sp.gov.br/hidrantes/03individual/15214.html"),
+    ("https://outro.site/x", "https://outro.site/x"),
+    ("javascript:alert(1)", None),
+    ("  JavaScript:alert(1)", None),
+    ("data:text/html,oi", None),
+])
+def test_hydrant_link_only_http(href, expected):
+    """Um link "javascript:" ou "data:" vindo do site do CB SP não vira link na tela."""
+    assert cb_sp.http_url("https://cbaplang.corpodebombeiros.sp.gov.br/hidrantes/07estacao/701031102.html", href) == expected
+
+
+@pytest.mark.parametrize("path, expected", [
+    ("/assets/index-CIhFn-G8.js", "public, max-age=31536000, immutable"),
+    ("/", "no-cache"),
+    ("/index.html", "no-cache"),
+    ("/favicon.svg", "public, max-age=86400"),
+    ("/api/stations", None),
+])
+def test_cache_control(path, expected):
+    assert security.cache_control(path) == expected
+
+
+def test_api_has_no_cache_header(client):
+    assert "cache-control" not in client.get("/api/").headers

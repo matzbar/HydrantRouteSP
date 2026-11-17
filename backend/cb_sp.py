@@ -8,7 +8,7 @@ import time
 import unicodedata
 from contextlib import suppress
 from typing import Dict, List, Optional, Tuple
-from urllib.parse import urljoin
+from urllib.parse import urljoin, urlparse
 
 import httpx
 from bs4 import BeautifulSoup
@@ -40,6 +40,13 @@ def norm_type(v: str) -> str:
 def norm_status(v: str) -> str:
     s = fold(v).replace("_", " ")
     return next((key for frag, key in STATUS_KEYS if frag in s), "outro")
+
+
+def http_url(base: str, href: str) -> Optional[str]:
+    """Endereço absoluto de um link da página do CB SP, só se for http(s): um "javascript:" ou "data:" vindo do
+    site nunca chega à tela como link."""
+    url = urljoin(base, href.strip())
+    return url if urlparse(url).scheme in ("http", "https") else None
 
 
 def parse_date_str(v: str) -> Optional[str]:
@@ -177,7 +184,7 @@ def parse_station_page(html: str, page_url: str = CB_INDEX_URL) -> dict:
             "flow": col(cells, "VAZAO"),
             "maintenance": col(cells, "MANUTENCAO"),
             "sector": col(cells, "SETOR"),
-            "url": urljoin(page_url, link["href"]) if link else None,
+            "url": http_url(page_url, link["href"]) if link else None,
         })
     return {"cycle": cycle, "hydrants": hydrants}
 
