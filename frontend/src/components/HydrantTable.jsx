@@ -5,8 +5,9 @@ import { colorOfStatus, statusLabel, statusShort, typeBadgeStyle, typeLabel } fr
 
 // Rótulo acima de cada controle: menor e mais claro que o conteúdo, como os cabeçalhos da tabela.
 const FILTER_LABEL = "text-label font-mono-t uppercase tracking-widest text-slate-400";
-// Mesma altura do campo de busca (h-10 = 40px), com os botões centralizados.
-const FILTER_BOX = "flex gap-1.5 flex-wrap items-center min-h-10 rounded-lg bg-page border border-line px-1.5 py-1";
+// Mesma altura do campo de busca (h-10 = 40px), com os botões centralizados. No celular, folga de 8 px em volta
+// dos botões de filtro (32 px), para não ficarem colados nas bordas da caixa.
+const FILTER_BOX = "flex gap-1.5 flex-wrap items-center min-h-10 rounded-lg bg-page border border-line px-1.5 py-1 touch:p-2";
 
 /**
  * Lista de hidrantes. Os filtros (busca, tipo, situação) ficam na página, porque também valem para o mapa e a
@@ -42,7 +43,7 @@ export default function HydrantTable({ hydrants, filtered, filters, onFiltersCha
                 type="button"
                 data-testid={`filter-type-${t}`}
                 onClick={() => set({ type: t })}
-                className={`px-3 py-1 touch:min-h-9 touch:px-4 rounded-full text-note font-mono-t uppercase tracking-widest border transition-colors ${
+                className={`px-3 py-1 touch:min-h-8 rounded-full text-note font-mono-t uppercase tracking-widest border transition-colors ${
                   filters.type === t
                     ? "bg-line text-white border-line-strong"
                     : "border-line text-slate-400 hover:text-white"
@@ -64,7 +65,7 @@ export default function HydrantTable({ hydrants, filtered, filters, onFiltersCha
                 title={s === "todos" ? undefined : statusLabel[s]}
                 aria-label={s === "todos" ? "Todas as situações" : statusLabel[s]}
                 onClick={() => set({ status: s })}
-                className={`px-3 py-1 touch:min-h-9 touch:px-4 rounded-full text-note font-mono-t uppercase tracking-widest border transition-colors ${
+                className={`px-3 py-1 touch:min-h-8 rounded-full text-note font-mono-t uppercase tracking-widest border transition-colors ${
                   filters.status === s
                     ? "bg-line text-white border-line-strong"
                     : "border-line text-slate-400 hover:text-white"

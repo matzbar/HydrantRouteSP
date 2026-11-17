@@ -14,7 +14,9 @@ export default function MapPanel({ tiles, mapFallback, hydrants, gps, route, fit
     : null;
 
   return (
-    <div className="tactical-card p-3 h-[400px] sm:h-[500px] relative">
+    // isolate: as camadas dos selos (z-[500], acima do mapa) valem só dentro deste quadro; o cabeçalho fixo e o
+    // resultado da rota ficam por cima deles.
+    <div className="tactical-card p-3 h-[400px] sm:h-[500px] relative isolate">
       <div className="absolute top-5 right-5 z-[500] flex items-center gap-2 px-3 py-1.5 rounded-full bg-page/85 border border-line backdrop-blur-md">
         <MapPin className="w-3.5 h-3.5 text-fire" />
         <span className="font-mono-t text-label uppercase tracking-widest text-slate-300" data-testid="map-count">
