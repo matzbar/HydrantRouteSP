@@ -2,7 +2,6 @@
 module.exports = {
     // `overline` is a Tailwind utility; without this an app's own eyebrow-label class draws a line above the text.
     blocklist: ["overline"],
-    darkMode: ["class"],
     content: [
     "./src/**/*.{js,jsx,ts,tsx}",
     "./index.html"
@@ -48,35 +47,20 @@ module.exports = {
         border: 'hsl(var(--border))',
         input: 'hsl(var(--input))',
         ring: 'hsl(var(--ring))',
-        chart: {
-          '1': 'hsl(var(--chart-1))',
-          '2': 'hsl(var(--chart-2))',
-          '3': 'hsl(var(--chart-3))',
-          '4': 'hsl(var(--chart-4))',
-          '5': 'hsl(var(--chart-5))'
-        }
-      },
-      keyframes: {
-        'accordion-down': {
-          from: {
-            height: '0'
-          },
-          to: {
-            height: 'var(--radix-accordion-content-height)'
-          }
+        // Cores do app (definidas em src/index.css): bg-page, bg-surface, border-line, text-route, text-ok...
+        page: 'rgb(var(--color-page) / <alpha-value>)',
+        surface: 'rgb(var(--color-surface) / <alpha-value>)',
+        elevated: 'rgb(var(--color-elevated) / <alpha-value>)',
+        line: {
+          DEFAULT: 'rgb(var(--color-line) / <alpha-value>)',
+          strong: 'rgb(var(--color-line-strong) / <alpha-value>)'
         },
-        'accordion-up': {
-          from: {
-            height: 'var(--radix-accordion-content-height)'
-          },
-          to: {
-            height: '0'
-          }
-        }
-      },
-      animation: {
-        'accordion-down': 'accordion-down 0.2s ease-out',
-        'accordion-up': 'accordion-up 0.2s ease-out'
+        fire: {
+          DEFAULT: 'rgb(var(--color-fire) / <alpha-value>)',
+          hover: 'rgb(var(--color-fire-hover) / <alpha-value>)'
+        },
+        route: 'rgb(var(--color-route) / <alpha-value>)',
+        ok: 'rgb(var(--color-ok) / <alpha-value>)'
       }
     }
   },

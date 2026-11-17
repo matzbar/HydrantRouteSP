@@ -59,14 +59,14 @@ export default function StartPointPicker({ hydrants, value, onChange }) {
         Primeira parada
       </label>
       <div
-        className="flex items-center gap-2 rounded-md border border-[#26334D] bg-[#121824] px-3 py-2"
+        className="flex items-center gap-2 rounded-md border border-line bg-surface px-3 py-2"
         data-testid="start-point-selected"
         aria-live="polite"
       >
         {selected ? (
-          <MapPin className="w-4 h-4 text-[#38BDF8] shrink-0" aria-hidden="true" />
+          <MapPin className="w-4 h-4 text-route shrink-0" aria-hidden="true" />
         ) : (
-          <Crosshair className="w-4 h-4 text-[#10B981] shrink-0" aria-hidden="true" />
+          <Crosshair className="w-4 h-4 text-ok shrink-0" aria-hidden="true" />
         )}
         <div className="flex-1 min-w-0 text-xs">
           {selected ? (
@@ -107,14 +107,14 @@ export default function StartPointPicker({ hydrants, value, onChange }) {
           onFocus={() => show(true)}
           onBlur={() => setTimeout(() => show(false), 150)}
           onKeyDown={onKeyDown}
-          className="pl-9 bg-[#121824] border-[#26334D] text-slate-100"
+          className="pl-9 bg-surface border-line text-slate-100"
         />
         {open && (
           <ul
             id={LIST_ID}
             role="listbox"
             aria-label="Hidrantes encontrados"
-            className="absolute z-[1000] mt-1 w-full max-h-64 overflow-y-auto rounded-md border border-[#26334D] bg-[#121824] shadow-xl"
+            className="absolute z-[1000] mt-1 w-full max-h-64 overflow-y-auto rounded-md border border-line bg-surface shadow-xl"
             data-testid="start-point-results"
           >
             {results.length === 0 && (
@@ -130,8 +130,8 @@ export default function StartPointPicker({ hydrants, value, onChange }) {
                 onClick={() => pick(h)}
                 onMouseEnter={() => setActive(i)}
                 data-testid={`start-point-option-${h.code}`}
-                className={`cursor-pointer px-3 py-2 border-b border-[#26334D] last:border-0 transition-colors ${
-                  i === active ? "bg-[#1A2234]" : "hover:bg-[#1A2234]"
+                className={`cursor-pointer px-3 py-2 border-b border-line last:border-0 transition-colors ${
+                  i === active ? "bg-elevated" : "hover:bg-elevated"
                 }`}
               >
                 <div className="font-mono-t text-xs font-bold text-white">{h.code}</div>
