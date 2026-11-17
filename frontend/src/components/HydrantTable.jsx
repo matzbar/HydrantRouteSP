@@ -18,6 +18,8 @@ export const statusColor = {
   sem_vistoria: "#94A3B8",
   outro: "#94A3B8",
 };
+// Rótulo acima de cada controle: menor e mais claro que o conteúdo, como os cabeçalhos da tabela.
+const FILTER_LABEL = "text-[10px] font-mono-t uppercase tracking-widest text-slate-400";
 // Mesma altura do campo de busca (h-10 = 40px), com os botões centralizados.
 const FILTER_BOX = "flex gap-1.5 flex-wrap items-center min-h-10 rounded-lg bg-[#0B0F17] border border-[#26334D] px-1.5 py-1";
 const typeStyle = {
@@ -36,52 +38,62 @@ export default function HydrantTable({ hydrants, filtered, filters, onFiltersCha
   return (
     <div className="space-y-3">
       <div className="flex flex-col sm:flex-row gap-2">
-        <div className="relative flex-1">
-          <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
-          <Input
-            data-testid="search-hydrants"
-            placeholder="Buscar por código, endereço ou setor..."
-            value={filters.q}
-            onChange={(e) => set({ q: e.target.value })}
-            className="h-10 pl-9 rounded-lg bg-[#0B0F17] border-[#26334D] text-slate-100"
-          />
+        <div className="flex flex-col gap-1 flex-1 min-w-0">
+          <label htmlFor="search-hydrants" className={FILTER_LABEL}>Buscar</label>
+          <div className="relative">
+            <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
+            <Input
+              id="search-hydrants"
+              data-testid="search-hydrants"
+              placeholder="Buscar por código, endereço ou setor..."
+              value={filters.q}
+              onChange={(e) => set({ q: e.target.value })}
+              className="h-10 pl-9 rounded-lg bg-[#0B0F17] border-[#26334D] text-slate-100"
+            />
+          </div>
         </div>
         {/* Cada grupo de filtros numa caixa com borda de 1px e cantos arredondados, como os demais quadros. */}
-        <div className={FILTER_BOX} role="group" aria-label="Filtrar por tipo">
-          {["todos", "coluna", "subterraneo", ...(hydrants.some((h) => h.type === "bica") ? ["bica"] : [])].map((t) => (
-            <button
-              key={t}
-              type="button"
-              data-testid={`filter-type-${t}`}
-              onClick={() => set({ type: t })}
-              className={`px-3 py-1 rounded-full text-[11px] font-mono-t uppercase tracking-widest border transition-colors ${
-                filters.type === t
-                  ? "bg-[#26334D] text-white border-[#38475F]"
-                  : "border-[#26334D] text-slate-400 hover:text-white"
-              }`}
-            >
-              {t === "todos" ? "Todos" : typeLabel[t]}
-            </button>
-          ))}
+        <div className="flex flex-col gap-1">
+          <span id="filter-type-label" className={FILTER_LABEL}>Tipo de hidrante</span>
+          <div className={FILTER_BOX} role="group" aria-labelledby="filter-type-label">
+            {["todos", "coluna", "subterraneo", ...(hydrants.some((h) => h.type === "bica") ? ["bica"] : [])].map((t) => (
+              <button
+                key={t}
+                type="button"
+                data-testid={`filter-type-${t}`}
+                onClick={() => set({ type: t })}
+                className={`px-3 py-1 rounded-full text-[11px] font-mono-t uppercase tracking-widest border transition-colors ${
+                  filters.type === t
+                    ? "bg-[#26334D] text-white border-[#38475F]"
+                    : "border-[#26334D] text-slate-400 hover:text-white"
+                }`}
+              >
+                {t === "todos" ? "Todos" : typeLabel[t]}
+              </button>
+            ))}
+          </div>
         </div>
-        <div className={FILTER_BOX} role="group" aria-label="Filtrar por situação">
-          {["todos", "possivel_de_uso", "inoperante", "nao_localizado"].map((s) => (
-            <button
-              key={s}
-              type="button"
-              data-testid={`filter-status-${s}`}
-              title={s === "todos" ? undefined : statusLabel[s]}
-              aria-label={s === "todos" ? "Todas as situações" : statusLabel[s]}
-              onClick={() => set({ status: s })}
-              className={`px-3 py-1 rounded-full text-[11px] font-mono-t uppercase tracking-widest border transition-colors ${
-                filters.status === s
-                  ? "bg-[#26334D] text-white border-[#38475F]"
-                  : "border-[#26334D] text-slate-400 hover:text-white"
-              }`}
-            >
-              {s === "todos" ? "Todas" : statusShort[s]}
-            </button>
-          ))}
+        <div className="flex flex-col gap-1">
+          <span id="filter-status-label" className={FILTER_LABEL}>Situação</span>
+          <div className={FILTER_BOX} role="group" aria-labelledby="filter-status-label">
+            {["todos", "possivel_de_uso", "inoperante", "nao_localizado"].map((s) => (
+              <button
+                key={s}
+                type="button"
+                data-testid={`filter-status-${s}`}
+                title={s === "todos" ? undefined : statusLabel[s]}
+                aria-label={s === "todos" ? "Todas as situações" : statusLabel[s]}
+                onClick={() => set({ status: s })}
+                className={`px-3 py-1 rounded-full text-[11px] font-mono-t uppercase tracking-widest border transition-colors ${
+                  filters.status === s
+                    ? "bg-[#26334D] text-white border-[#38475F]"
+                    : "border-[#26334D] text-slate-400 hover:text-white"
+                }`}
+              >
+                {s === "todos" ? "Todas" : statusShort[s]}
+              </button>
+            ))}
+          </div>
         </div>
       </div>
 
