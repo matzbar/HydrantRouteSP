@@ -6,7 +6,7 @@ import { Loader2, MapPin } from "lucide-react";
 const HydrantMap = lazy(() => import("./HydrantMap"));
 
 /** Quadro do mapa: contagem de hidrantes no mapa, aviso de mapa alternativo e o mapa em si. */
-export default function MapPanel({ tiles, mapFallback, hydrants, gps, route, fitKey, onMap, allOnMap, filtering }) {
+export default function MapPanel({ tiles, mapFallback, hydrants, gps, route, fitKey, onMap, allOnMap, filtering, focus }) {
   const routeOrder = route?.stops.map((s) => s.hydrant.id);
   // A rota sempre parte da localização usada no cálculo (GPS ou centro de SP).
   const routePolyline = route
@@ -16,7 +16,7 @@ export default function MapPanel({ tiles, mapFallback, hydrants, gps, route, fit
   return (
     // isolate: as camadas dos selos (z-[500], acima do mapa) valem só dentro deste quadro; o cabeçalho fixo e o
     // resultado da rota ficam por cima deles.
-    <div className="tactical-card p-3 h-[400px] sm:h-[500px] relative isolate">
+    <div id="mapa" className="tactical-card p-3 h-[400px] sm:h-[500px] relative isolate scroll-below-header">
       <div className="absolute top-5 right-5 z-[500] flex items-center gap-2 px-3 py-1.5 rounded-full bg-page/85 border border-line backdrop-blur-md">
         <MapPin className="w-3.5 h-3.5 text-fire" />
         <span className="font-mono-t text-label uppercase tracking-widest text-slate-300" data-testid="map-count">
@@ -25,7 +25,7 @@ export default function MapPanel({ tiles, mapFallback, hydrants, gps, route, fit
       </div>
       {mapFallback && (
         <div
-          className="absolute bottom-10 left-5 z-[500] max-w-[75%] px-3 py-1.5 rounded-md bg-page/85 border border-amber-500/40 backdrop-blur-md font-mono-t text-label uppercase tracking-widest text-amber-300"
+          className="absolute bottom-10 left-5 touch:bottom-auto touch:top-14 z-[500] max-w-[75%] px-3 py-1.5 rounded-md bg-page/85 border border-amber-500/40 backdrop-blur-md font-mono-t text-label uppercase tracking-widest text-amber-300"
           data-testid="map-fallback"
           title="O MapTiler recusou a chave do mapa (cota esgotada ou chave inválida). O app passou a usar o OpenStreetMap, que tem menos zoom."
         >
@@ -40,6 +40,7 @@ export default function MapPanel({ tiles, mapFallback, hydrants, gps, route, fit
           routeOrder={routeOrder}
           routePolyline={routePolyline}
           fitKey={fitKey}
+          focus={focus}
         />
       </Suspense>
     </div>

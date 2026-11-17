@@ -34,3 +34,6 @@ export const typeBadgeStyle = {
 };
 
 export const hasCoords = (h) => h.lat != null && h.lon != null;
+
+/** "2026-03-14" → "14/03/2026"; sem data, "—". */
+export const formatDate = (iso) => (iso ? iso.split("-").reverse().join("/") : "—");
