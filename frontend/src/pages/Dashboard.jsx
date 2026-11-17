@@ -45,6 +45,15 @@ export default function Dashboard() {
   // Hidrante a mostrar no mapa (toque num cartão da lista); `n` muda a cada toque.
   const [mapFocus, setMapFocus] = useState(null);
 
+  // Define (ou remove, com null) a primeira parada da rota pelo cartão da lista ou pelo popup do mapa: é o mesmo
+  // campo "Primeira parada" do quadro Rota.
+  const setFirstStop = useCallback((id) => {
+    setStartId(id);
+    const h = id && data?.hydrants.find((x) => x.id === id);
+    if (h) toast.success(`Hidrante ${h.code} definido como primeira parada`);
+    else toast.info("Primeira parada voltou para automática");
+  }, [data]);
+
   // Rola até o mapa e, só quando a rolagem termina, aproxima no hidrante e abre o popup: aberto no meio da rolagem,
   // o ajuste que mantém o popup abaixo do cabeçalho deslocaria o mapa e o hidrante sairia da tela.
   const showOnMap = useCallback((id) => {
@@ -143,6 +152,8 @@ export default function Dashboard() {
         filters={filters}
         onFiltersChange={setFilters}
         onShowOnMap={showOnMap}
+        startId={startId}
+        onSetFirstStop={setFirstStop}
         emptyMessage="Esta estação não tem hidrantes pendentes de vistoria neste ciclo."
       />
     );
@@ -207,9 +218,11 @@ export default function Dashboard() {
             allOnMap={allLocatedCount}
             filtering={filtering}
             focus={mapFocus}
+            startId={startId}
+            onSetFirstStop={setFirstStop}
           />
 
-          <div className="tactical-card p-5">
+          <div className="tactical-card p-4 sm:p-5">
             <div className="flex flex-col sm:flex-row sm:items-baseline justify-between gap-1 mb-4">
               <h2 className="font-display text-lg font-bold uppercase tracking-wider">Hidrantes Pendentes de Vistoria</h2>
               {data?.cycle && (

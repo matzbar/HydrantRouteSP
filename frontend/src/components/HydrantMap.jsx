@@ -102,7 +102,7 @@ function KeepPopupBelowHeader() {
   return null;
 }
 
-export default function HydrantMap({ tiles, hydrants, gps, routeOrder, routePolyline, fitKey, focus }) {
+export default function HydrantMap({ tiles, hydrants, gps, routeOrder, routePolyline, fitKey, focus, startId, onSetFirstStop }) {
   const markers = useRef(new Map()); // id do hidrante → marcador do Leaflet (para abrir o popup pelo foco)
   const geocoded = useMemo(() => hydrants.filter((h) => h.lat != null && h.lon != null), [hydrants]);
   const view = useMemo(() => mapView(geocoded.map((h) => [h.lat, h.lon]), gps), [geocoded, gps]);
@@ -165,6 +165,12 @@ export default function HydrantMap({ tiles, hydrants, gps, routeOrder, routePoly
                     <div className="hydrant-popup__source text-ok">Posição oficial (mapa do CB SP)</div>
                   ) : (
                     <div className="hydrant-popup__source text-amber-500">Posição aproximada pelo endereço</div>
+                  )}
+                  {onSetFirstStop && (
+                    <button type="button" className="hydrant-popup__action" data-testid="popup-first-stop"
+                      onClick={() => onSetFirstStop(startId === h.id ? null : h.id)}>
+                      {startId === h.id ? "Remover 1ª parada" : "Definir 1ª parada"}
+                    </button>
                   )}
                 </div>
               </Popup>

@@ -6,7 +6,7 @@ import { Loader2, MapPin } from "lucide-react";
 const HydrantMap = lazy(() => import("./HydrantMap"));
 
 /** Quadro do mapa: contagem de hidrantes no mapa, aviso de mapa alternativo e o mapa em si. */
-export default function MapPanel({ tiles, mapFallback, hydrants, gps, route, fitKey, onMap, allOnMap, filtering, focus }) {
+export default function MapPanel({ tiles, mapFallback, hydrants, gps, route, fitKey, onMap, allOnMap, filtering, focus, startId, onSetFirstStop }) {
   const routeOrder = route?.stops.map((s) => s.hydrant.id);
   // A rota sempre parte da localização usada no cálculo (GPS ou centro de SP).
   const routePolyline = route
@@ -41,6 +41,8 @@ export default function MapPanel({ tiles, mapFallback, hydrants, gps, route, fit
           routePolyline={routePolyline}
           fitKey={fitKey}
           focus={focus}
+          startId={startId}
+          onSetFirstStop={onSetFirstStop}
         />
       </Suspense>
     </div>
