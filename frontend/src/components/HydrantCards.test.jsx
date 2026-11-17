@@ -13,47 +13,64 @@ const H = [
     lat: null, lon: null },
 ];
 
-function setup() {
+function setup(startId = null) {
   const onShowOnMap = vi.fn();
-  render(<HydrantCards hydrants={H} onShowOnMap={onShowOnMap} />);
-  return { onShowOnMap, user: userEvent.setup() };
+  const onSetFirstStop = vi.fn();
+  render(<HydrantCards hydrants={H} startId={startId} onShowOnMap={onShowOnMap} onSetFirstStop={onSetFirstStop} />);
+  return { onShowOnMap, onSetFirstStop, user: userEvent.setup() };
 }
+const row = (code) => within(screen.getByTestId(`hydrant-card-${code}`)).getByRole("button", { expanded: false });
 
 describe("HydrantCards", () => {
-  it("mostra tudo de cada hidrante, sem precisar rolar para o lado", () => {
+  it("fechado, cada hidrante é uma linha: código, endereço e situação (cor do ícone; nome para leitor de tela)", () => {
     setup();
-    const card = screen.getByTestId("hydrant-card-15214");
-    expect(within(card).getByRole("link", { name: "15214" })).toHaveAttribute("href", "https://exemplo/15214");
-    expect(card).toHaveTextContent("Inoperante");
-    expect(card).toHaveTextContent("Subterrâneo");
-    expect(card).toHaveTextContent("Rua Luis Romanini esquina com a Rua Doutor Carlos Camilo Haddad");
-    expect(card).toHaveTextContent("São Paulo · Setor 4289");
-    expect(card).toHaveTextContent("Últ. vistoria 05/02/2026 · Vazão NÃO MEDIDA");
-    expect(screen.getByTestId("hydrant-card-1396")).toHaveTextContent("posição aproximada pelo endereço");
+    const line = row("15214");
+    expect(line).toHaveTextContent("15214");
+    expect(line).toHaveTextContent("Rua Luis Romanini");
+    expect(line).not.toHaveTextContent("INOP"); // só a cor do ícone na tela
+    expect(line).toHaveTextContent("Inoperante"); // nome da situação só para leitor de tela
+    expect(screen.queryByTestId("hydrant-card-details")).toBeNull();
     expect(screen.getAllByRole("listitem")).toHaveLength(3);
   });
 
-  it("tocar no cartão ou em 'Ver no mapa' leva ao hidrante no mapa", async () => {
-    const { onShowOnMap, user } = setup();
-    await user.click(screen.getByText("Rua B"));
-    expect(onShowOnMap).toHaveBeenLastCalledWith("b");
+  it("tocar na linha abre o cartão com o resto das informações; um aberto por vez", async () => {
+    const { user } = setup();
+    await user.click(row("15214"));
+    const card = screen.getByTestId("hydrant-card-15214");
+    expect(within(card).getByRole("button", { expanded: true })).toBeInTheDocument();
+    const details = within(card).getByTestId("hydrant-card-details");
+    expect(details).toHaveTextContent("Subterrâneo");
+    expect(details).toHaveTextContent("São Paulo · Setor 4289");
+    expect(details).toHaveTextContent("Últ. vistoria 05/02/2026 · Vazão NÃO MEDIDA");
+    expect(within(details).getByRole("link", { name: "Ficha do hidrante 15214 no CB SP" })).toHaveAttribute("href", "https://exemplo/15214");
+
+    await user.click(row("1396"));
+    expect(screen.getAllByTestId("hydrant-card-details")).toHaveLength(1);
+    expect(screen.getByTestId("hydrant-card-1396")).toHaveTextContent("posição aproximada pelo endereço");
+  });
+
+  it("'Ver no mapa' e 'Definir 1ª parada' no cartão aberto", async () => {
+    const { onShowOnMap, onSetFirstStop, user } = setup();
+    await user.click(row("15214"));
     await user.click(screen.getByRole("button", { name: "Ver o hidrante 15214 no mapa" }));
-    expect(onShowOnMap).toHaveBeenLastCalledWith("a");
-    expect(onShowOnMap).toHaveBeenCalledTimes(2); // o botão não dispara o toque do cartão de novo
+    expect(onShowOnMap).toHaveBeenCalledWith("a");
+    await user.click(screen.getByRole("button", { name: "Definir 1ª parada" }));
+    expect(onSetFirstStop).toHaveBeenCalledWith("a");
   });
 
-  it("o link do código abre a ficha e não move o mapa", async () => {
-    const { onShowOnMap, user } = setup();
-    await user.click(screen.getByRole("link", { name: "15214" }));
-    expect(onShowOnMap).not.toHaveBeenCalled();
+  it("a primeira parada atual aparece marcada e o cartão oferece removê-la", async () => {
+    const { onSetFirstStop, user } = setup("b");
+    expect(row("1396")).toHaveTextContent("(primeira parada)");
+    await user.click(row("1396"));
+    await user.click(screen.getByRole("button", { name: "Remover 1ª parada" }));
+    expect(onSetFirstStop).toHaveBeenCalledWith(null);
   });
 
-  it("hidrante fora do mapa: avisa e não oferece 'Ver no mapa'", async () => {
-    const { onShowOnMap, user } = setup();
-    const card = screen.getByTestId("hydrant-card-4301");
-    expect(card).toHaveTextContent("Fora do mapa: endereço não localizado");
-    expect(within(card).queryByRole("button")).toBeNull();
-    await user.click(within(card).getByText("Rua C"));
-    expect(onShowOnMap).not.toHaveBeenCalled();
+  it("hidrante fora do mapa: avisa e não oferece mapa nem primeira parada", async () => {
+    const { user } = setup();
+    await user.click(row("4301"));
+    const details = screen.getByTestId("hydrant-card-details");
+    expect(details).toHaveTextContent("Fora do mapa: endereço não localizado");
+    expect(within(details).queryByRole("button")).toBeNull();
   });
 });

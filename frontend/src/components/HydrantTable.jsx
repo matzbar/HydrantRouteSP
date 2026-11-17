@@ -13,9 +13,10 @@ const FILTER_BOX = "flex gap-1.5 flex-wrap items-center min-h-10 rounded-lg bg-p
 /**
  * Lista de hidrantes: tabela a partir de 768 px (tablet, computador) e cartões no celular. Os filtros (busca, tipo,
  * situação) ficam na página, porque também valem para o mapa e a rota: a lista recebe os hidrantes já filtrados e o
- * total da estação. `onShowOnMap(id)`: tocar num cartão leva ao hidrante no mapa.
+ * total da estação. Nos cartões: `onShowOnMap(id)` leva ao hidrante no mapa e `onSetFirstStop(id | null)` define (ou
+ * remove) a primeira parada da rota.
  */
-export default function HydrantTable({ hydrants, filtered, filters, onFiltersChange, onShowOnMap,
+export default function HydrantTable({ hydrants, filtered, filters, onFiltersChange, onShowOnMap, startId, onSetFirstStop,
   emptyMessage = "Nenhum hidrante encontrado." }) {
   const empty = hydrants.length === 0 ? emptyMessage : "Nenhum hidrante encontrado com esses filtros.";
   const set = (patch) => onFiltersChange({ ...filters, ...patch });
@@ -85,7 +86,7 @@ export default function HydrantTable({ hydrants, filtered, filters, onFiltersCha
       <div className="md:hidden">
         {filtered.length === 0
           ? <p className="py-10 text-center text-sm text-slate-400" data-testid="hydrant-cards-empty">{empty}</p>
-          : <HydrantCards hydrants={filtered} onShowOnMap={onShowOnMap} />}
+          : <HydrantCards hydrants={filtered} startId={startId} onShowOnMap={onShowOnMap} onSetFirstStop={onSetFirstStop} />}
       </div>
       <div className="tactical-card overflow-hidden hidden md:block">
         <div className="max-h-[480px] overflow-y-auto overflow-x-auto">

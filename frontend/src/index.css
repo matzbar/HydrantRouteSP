@@ -133,6 +133,15 @@ body {
 .hydrant-popup__address { margin-top: 6px; font-size: 13px; }
 .hydrant-popup__meta { margin-top: 2px; font-size: 11px; color: rgb(var(--color-text-muted)); }
 .hydrant-popup__source { margin-top: 4px; font-size: 11px; }
+/* Ação do popup ("Definir 1ª parada"): em destaque, com fundo suave, contorno e cantos arredondados, na cor da rota. */
+.hydrant-popup__action {
+  display: inline-flex; align-items: center; margin-top: 8px; padding: 5px 10px; cursor: pointer;
+  border: 1px solid rgb(var(--color-route) / 0.4); border-radius: 6px; background: rgb(var(--color-route) / 0.1);
+  font-family: 'JetBrains Mono', monospace; font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase;
+  color: rgb(var(--color-route));
+}
+.hydrant-popup__action:hover { background: rgb(var(--color-route) / 0.2); }
+@media (pointer: coarse) { .hydrant-popup__action { min-height: 36px; font-size: 12px; } }
 
 /* Custom hydrant marker */
 .hydrant-pin {
