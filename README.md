@@ -22,6 +22,8 @@ backend/
   config.py      endereços dos serviços e limites
   tests/         testes unitários (sem rede nem banco)
 frontend/        React (Vite) + Leaflet + Tailwind
+scripts/
+  contar_rotas.py  rotas geradas por dia, pelos logs do Render (últimos 7 dias)
 ```
 
 Em produção é **um único serviço**: o `Dockerfile` compila o React e o FastAPI serve o site e a API (`/api`) na mesma porta. Não é preciso configurar CORS nem `VITE_BACKEND_URL`.
@@ -68,6 +70,10 @@ docker compose up -d --build        # app + MongoDB
 3. Configure `MONGO_URL` e `DB_NAME`. Pronto: o site e a API sobem na mesma URL.
 
 > Rode com **1 instância/worker**: a fila de localização pelo endereço e os caches ficam na memória do processo.
+
+### Quantas rotas o app gera
+
+`python3 scripts/contar_rotas.py` mostra, por dia, as rotas geradas, as aberturas do app e as consultas de estação, além do pico de rotas por minuto (dados dos logs do Render, que guarda cerca de 7 dias). Precisa de uma chave da API do Render (*Account Settings → API Keys*) na variável `RENDER_API_KEY` ou no arquivo `~/.config/render/api_key`. A chave dá acesso total à conta: crie na hora e apague depois de usar.
 
 ## Desenvolvimento sem Docker
 
