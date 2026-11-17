@@ -24,7 +24,7 @@ jobs:
       - run: pip-audit -r requirements.txt
 
   frontend:
-    name: Frontend (lint + build)
+    name: Frontend (lint + testes + build)
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -37,6 +37,7 @@ jobs:
       - run: corepack enable
       - run: yarn install --frozen-lockfile
       - run: yarn lint
+      - run: yarn test
       - run: yarn build
 
   docker:
