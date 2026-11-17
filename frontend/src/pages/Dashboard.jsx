@@ -291,7 +291,7 @@ export default function Dashboard() {
               <h1 className="font-display text-xl sm:text-2xl font-black uppercase tracking-wider leading-none">
                 HydrantRoute <span className="text-[#EF4444]">SP</span>
               </h1>
-              <p className="text-[10px] font-mono-t uppercase tracking-widest text-slate-500">
+              <p className="text-[10px] font-mono-t uppercase tracking-widest text-slate-400">
                 Tactical · CB SP · OSM/OSRM
               </p>
             </div>
@@ -329,7 +329,7 @@ export default function Dashboard() {
             { label: "No mapa", value: stats.geo, color: "#38BDF8", id: "geo" },
           ].map((s) => (
             <div key={s.id} className="tactical-card p-4" data-testid={`stat-${s.id}`}>
-              <div className="font-mono-t text-[10px] uppercase tracking-widest text-slate-500">{s.label}</div>
+              <div className="font-mono-t text-[10px] uppercase tracking-widest text-slate-400">{s.label}</div>
               <div className="font-display font-black text-3xl mt-1" style={{ color: s.color }}>{s.value}</div>
             </div>
           ))}
@@ -365,7 +365,7 @@ export default function Dashboard() {
                 <div className="font-display text-sm font-bold uppercase tracking-wider text-slate-200">
                   {station.name || `Estação ${station.code}`}
                 </div>
-                <div className="text-[10px] font-mono-t uppercase tracking-widest text-slate-500">
+                <div className="text-[10px] font-mono-t uppercase tracking-widest text-slate-400">
                   {[station.cmd, station.gb_sgb && `GB.SGB ${station.gb_sgb}`, `Cód. ${station.code}`].filter(Boolean).join(" · ")}
                 </div>
                 <div className="flex flex-wrap items-center gap-2 text-xs text-slate-400">
@@ -390,11 +390,11 @@ export default function Dashboard() {
             <div className="space-y-3 rounded-lg bg-[#0B0F17] border border-[#26334D] p-4">
               <div className="flex items-end justify-between gap-3">
                 <div>
-                  <div className="font-mono-t text-[10px] uppercase tracking-widest text-slate-400">
+                  <label htmlFor="max-stops" className="font-mono-t text-[10px] uppercase tracking-widest text-slate-400">
                     Quantidade de hidrantes
-                  </div>
+                  </label>
                   <div className="font-display text-3xl font-black text-[#38BDF8] leading-none mt-1">
-                    {stopsShown} <span className="text-sm text-slate-500">/ {stopsLimit}</span>
+                    {stopsShown} <span className="text-sm text-slate-400">/ {stopsLimit}</span>
                   </div>
                 </div>
                 <Input
@@ -414,6 +414,7 @@ export default function Dashboard() {
               </div>
               <Slider
                 data-testid="max-stops-slider"
+                thumbLabel="Quantidade de hidrantes"
                 min={noStops ? 0 : 1}
                 max={Math.max(1, stopsLimit)}
                 step={1}
@@ -434,7 +435,7 @@ export default function Dashboard() {
                 </p>
               )}
               {noStops && data && (
-                <p className="text-[11px] text-slate-500" data-testid="no-stops-note">
+                <p className="text-[11px] text-slate-400" data-testid="no-stops-note">
                   {hydrants.length === 0
                     ? "Esta estação não tem hidrantes pendentes de vistoria: não há rota a gerar."
                     : visible.length === 0
@@ -493,7 +494,7 @@ export default function Dashboard() {
             <div className="flex flex-col sm:flex-row sm:items-baseline justify-between gap-1 mb-4">
               <h2 className="font-display text-lg font-bold uppercase tracking-wider">Hidrantes Pendentes de Vistoria</h2>
               {data?.cycle && (
-                <span className="font-mono-t text-[10px] uppercase tracking-widest text-slate-500">Ciclo {data.cycle}</span>
+                <span className="font-mono-t text-[10px] uppercase tracking-widest text-slate-400">Ciclo {data.cycle}</span>
               )}
             </div>
             {listBody}
@@ -502,7 +503,7 @@ export default function Dashboard() {
       </main>
 
       <footer className="border-t border-[#26334D] py-6 text-center">
-        <p className="text-[10px] font-mono-t uppercase tracking-widest text-slate-600">
+        <p className="text-[10px] font-mono-t uppercase tracking-widest text-slate-400">
           HydrantRoute SP · Dados ao vivo do CB SP · OpenStreetMap · OSRM · Google Maps · Desenvolvido por CB MANOSSO
         </p>
       </footer>
@@ -531,7 +532,7 @@ function PercentBadge({ value }) {
 
 function EmptyState({ text, spin }) {
   return (
-    <div className="py-10 flex items-center justify-center gap-2 text-sm text-slate-500">
+    <div className="py-10 flex items-center justify-center gap-2 text-sm text-slate-400">
       {spin && <Loader2 className="w-4 h-4 animate-spin" />}
       {text}
     </div>

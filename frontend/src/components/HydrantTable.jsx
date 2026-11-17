@@ -115,7 +115,7 @@ export default function HydrantTable({ hydrants, filtered, filters, onFiltersCha
             <tbody>
               {filtered.length === 0 && (
                 <tr>
-                  <td colSpan={8} className="px-3 py-10 text-center text-slate-500">
+                  <td colSpan={8} className="px-3 py-10 text-center text-slate-400">
                     {hydrants.length === 0 ? emptyMessage : "Nenhum hidrante encontrado com esses filtros."}
                   </td>
                 </tr>
@@ -177,10 +177,10 @@ export default function HydrantTable({ hydrants, filtered, filters, onFiltersCha
           </table>
         </div>
       </div>
-      <p className="text-xs text-slate-500 font-mono-t">
+      <p className="text-xs text-slate-400 font-mono-t">
         {filtered.length} de {hydrants.length} hidrantes
         {hydrants.some((h) => h.location_source === "endereco") && (
-          <span className="ml-3 text-slate-600">≈ posição aproximada pelo endereço (sem posição no mapa oficial)</span>
+          <span className="ml-3 text-slate-400">≈ posição aproximada pelo endereço (sem posição no mapa oficial)</span>
         )}
       </p>
     </div>
