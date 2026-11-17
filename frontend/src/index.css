@@ -24,11 +24,38 @@ html, body, #root {
   min-height: 100vh;
 }
 
+/* viewport-fit=cover (app instalável no iPhone): a página vai até as bordas da tela; estes espaços mantêm o
+   conteúdo longe do entalhe (notch), da barra de status e da barra inferior. Fora do iPhone valem 0. */
+body {
+  padding-left: env(safe-area-inset-left, 0px);
+  padding-right: env(safe-area-inset-right, 0px);
+}
+.safe-top { padding-top: env(safe-area-inset-top, 0px); }
+.safe-bottom { padding-bottom: calc(1.5rem + env(safe-area-inset-bottom, 0px)); }
+
 body {
   margin: 0;
   font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
   -webkit-font-smoothing: antialiased;
   overflow-x: hidden;
+}
+
+/* Textos pequenos: rótulos (10 px) e notas (11 px) no computador; no celular, 12 e 13 px (mínimos de leitura
+   recomendados por Apple e Google). */
+@layer utilities {
+  .text-label { font-size: 10px; }
+  .text-note { font-size: 11px; }
+  @media (pointer: coarse) {
+    .text-label { font-size: 12px; }
+    .text-note { font-size: 13px; }
+  }
+}
+
+/* Botões do mapa com área de toque de 44 px no celular. */
+@media (pointer: coarse) {
+  .leaflet-touch .leaflet-bar a { width: 44px; height: 44px; line-height: 44px; }
+  .leaflet-container a.leaflet-popup-close-button { width: 44px; height: 44px; font-size: 24px; line-height: 44px; }
+  .leaflet-container .hydrant-pin-inner { font-size: 12px; }
 }
 
 .font-display {

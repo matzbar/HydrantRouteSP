@@ -15,7 +15,7 @@ export function selectionFromStation(station) {
 
 const triggerCls = "bg-page border-line text-slate-100";
 const contentCls = "bg-surface border-line text-slate-100 max-h-72";
-const labelCls = "font-mono-t text-[10px] uppercase tracking-widest text-slate-400";
+const labelCls = "font-mono-t text-label uppercase tracking-widest text-slate-400";
 
 function Field({ id, label, value, onChange, options, placeholder, disabled, testId }) {
   return (

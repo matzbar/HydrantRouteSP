@@ -12,7 +12,7 @@ export default function StationCard({ stations, value, onChange, disabled, stati
           <div className="font-display text-sm font-bold uppercase tracking-wider text-slate-200">
             {station.name || `Estação ${station.code}`}
           </div>
-          <div className="text-[10px] font-mono-t uppercase tracking-widest text-slate-400">
+          <div className="text-label font-mono-t uppercase tracking-widest text-slate-400">
             {[station.cmd, station.gb_sgb && `GB.SGB ${station.gb_sgb}`, `Cód. ${station.code}`].filter(Boolean).join(" · ")}
           </div>
           <div className="flex flex-wrap items-center gap-2 text-xs text-slate-400">
@@ -20,7 +20,7 @@ export default function StationCard({ stations, value, onChange, disabled, stati
             {station.percent_done != null && <PercentBadge value={station.percent_done} />}
           </div>
           <a href={station.url} target="_blank" rel="noopener noreferrer"
-            className="inline-flex items-center gap-1 text-xs text-route hover:underline">
+            className="inline-flex items-center gap-1 text-xs text-route hover:underline touch:min-h-11">
             Ver página no site do CB SP <ExternalLink className="w-3 h-3" />
           </a>
         </div>
@@ -35,7 +35,7 @@ function PercentBadge({ value }) {
   return (
     <span
       data-testid="station-percent"
-      className={`inline-flex items-center rounded-full border px-2 py-0.5 font-mono-t text-[11px] font-semibold uppercase tracking-wider ${
+      className={`inline-flex items-center rounded-full border px-2 py-0.5 font-mono-t text-note font-semibold uppercase tracking-wider ${
         done ? "bg-ok/15 border-ok/40 text-emerald-300" : "bg-fire/15 border-fire/40 text-red-300"
       }`}
     >

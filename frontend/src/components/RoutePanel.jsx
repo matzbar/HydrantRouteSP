@@ -30,7 +30,7 @@ export default function RoutePanel({
       <div className="space-y-3 rounded-lg bg-page border border-line p-4">
         <div className="flex items-end justify-between gap-3">
           <div>
-            <label htmlFor="max-stops" className="font-mono-t text-[10px] uppercase tracking-widest text-slate-400">
+            <label htmlFor="max-stops" className="font-mono-t text-label uppercase tracking-widest text-slate-400">
               Quantidade de hidrantes
             </label>
             <div className="font-display text-3xl font-black text-route leading-none mt-1">
@@ -64,18 +64,18 @@ export default function RoutePanel({
           className="w-full"
         />
         {onMap > routeMaxStops && (
-          <p className="text-[11px] text-slate-400" data-testid="max-stops-note">
+          <p className="text-note text-slate-400" data-testid="max-stops-note">
             {onMap} hidrantes no mapa · máximo de {routeMaxStops} paradas por rota. A rota escolhe os
             melhores entre todos eles.
           </p>
         )}
         {filtering && !noStops && (
-          <p className="text-[11px] text-amber-300/90" data-testid="route-filter-note">
+          <p className="text-note text-amber-300/90" data-testid="route-filter-note">
             Filtro da lista ativo: a rota considera só os {onMap} hidrante(s) do filtro.
           </p>
         )}
         {noStopsReason && (
-          <p className="text-[11px] text-slate-400" data-testid="no-stops-note">{noStopsReason}</p>
+          <p className="text-note text-slate-400" data-testid="no-stops-note">{noStopsReason}</p>
         )}
       </div>
 
@@ -88,10 +88,10 @@ export default function RoutePanel({
         {loading ? <Loader2 className="w-5 h-5 mr-2 animate-spin" /> : <Navigation className="w-5 h-5 mr-2" />}
         Gerar Rota Otimizada
       </Button>
-      <p className="text-[11px] text-slate-400 leading-relaxed">
+      <p className="text-note text-slate-400 leading-relaxed">
         A rota sempre parte da sua localização (GPS) e a ordem das paradas é otimizada pelo tempo real de carro entre os hidrantes (OSRM). Se você escolher uma primeira parada, ela fica fixa como parada 1.
       </p>
-      <p className="text-[11px] text-slate-400 leading-relaxed" data-testid="privacy-note">
+      <p className="text-note text-slate-400 leading-relaxed" data-testid="privacy-note">
         Privacidade: sua localização fica só no navegador até você gerar a rota. Aí ela é enviada ao serviço de rotas (OSRM) e ao link do Google Maps, apenas para o cálculo, e não é armazenada pelo app.
       </p>
     </div>

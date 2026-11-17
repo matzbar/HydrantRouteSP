@@ -91,7 +91,9 @@ export default function HydrantMap({ tiles, hydrants, gps, routeOrder, routePoly
       <MapContainer
         center={SP_CENTER}
         zoom={12}
-        style={{ height: "100%", width: "100%", minHeight: "420px" }}
+        // Ocupa exatamente o quadro do mapa. Uma altura mínima fixa aqui cortava a parte de baixo no celular
+        // (marcadores e a linha de créditos dos mapas, exigida pela licença), onde o quadro é mais baixo.
+        style={{ height: "100%", width: "100%" }}
         scrollWheelZoom
       >
         {/* Só desenha o fundo depois de saber o provedor, para não carregar dois mapas. */}

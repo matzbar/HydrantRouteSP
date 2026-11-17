@@ -643,6 +643,9 @@ def test_hydrant_link_only_http(href, expected):
     ("/", "no-cache"),
     ("/index.html", "no-cache"),
     ("/favicon.svg", "public, max-age=86400"),
+    ("/icon-512.png", "public, max-age=86400"),
+    ("/sw.js", "no-cache"),
+    ("/manifest.webmanifest", "no-cache"),
     ("/api/stations", None),
 ])
 def test_cache_control(path, expected):

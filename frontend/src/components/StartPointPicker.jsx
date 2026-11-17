@@ -55,7 +55,7 @@ export default function StartPointPicker({ hydrants, value, onChange }) {
 
   return (
     <div className="space-y-2" data-testid="start-point-picker">
-      <label htmlFor="start-point-search" className="block font-mono-t text-[10px] uppercase tracking-widest text-slate-400">
+      <label htmlFor="start-point-search" className="block font-mono-t text-label uppercase tracking-widest text-slate-400">
         Primeira parada
       </label>
       <div
@@ -83,7 +83,7 @@ export default function StartPointPicker({ hydrants, value, onChange }) {
             type="button"
             onClick={() => pick(null)}
             data-testid="start-point-clear"
-            className="text-slate-400 hover:text-white transition-colors"
+            className="text-slate-400 hover:text-white transition-colors touch:h-11 touch:w-11 touch:-my-3 touch:-mr-3 touch:flex touch:items-center touch:justify-center"
             title="Voltar para automática" aria-label="Voltar para automática"
           >
             <X className="w-4 h-4" aria-hidden="true" />
@@ -130,12 +130,12 @@ export default function StartPointPicker({ hydrants, value, onChange }) {
                 onClick={() => pick(h)}
                 onMouseEnter={() => setActive(i)}
                 data-testid={`start-point-option-${h.code}`}
-                className={`cursor-pointer px-3 py-2 border-b border-line last:border-0 transition-colors ${
+                className={`cursor-pointer px-3 py-2 touch:py-3 border-b border-line last:border-0 transition-colors ${
                   i === active ? "bg-elevated" : "hover:bg-elevated"
                 }`}
               >
                 <div className="font-mono-t text-xs font-bold text-white">{h.code}</div>
-                <div className="text-[11px] text-slate-400 truncate">{h.address}</div>
+                <div className="text-note text-slate-400 truncate">{h.address}</div>
               </li>
             ))}
           </ul>

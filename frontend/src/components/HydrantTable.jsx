@@ -4,7 +4,7 @@ import { Search, AlertTriangle } from "lucide-react";
 import { colorOfStatus, statusLabel, statusShort, typeBadgeStyle, typeLabel } from "../lib/hydrants";
 
 // Rótulo acima de cada controle: menor e mais claro que o conteúdo, como os cabeçalhos da tabela.
-const FILTER_LABEL = "text-[10px] font-mono-t uppercase tracking-widest text-slate-400";
+const FILTER_LABEL = "text-label font-mono-t uppercase tracking-widest text-slate-400";
 // Mesma altura do campo de busca (h-10 = 40px), com os botões centralizados.
 const FILTER_BOX = "flex gap-1.5 flex-wrap items-center min-h-10 rounded-lg bg-page border border-line px-1.5 py-1";
 
@@ -42,7 +42,7 @@ export default function HydrantTable({ hydrants, filtered, filters, onFiltersCha
                 type="button"
                 data-testid={`filter-type-${t}`}
                 onClick={() => set({ type: t })}
-                className={`px-3 py-1 rounded-full text-[11px] font-mono-t uppercase tracking-widest border transition-colors ${
+                className={`px-3 py-1 touch:min-h-11 touch:px-4 rounded-full text-note font-mono-t uppercase tracking-widest border transition-colors ${
                   filters.type === t
                     ? "bg-line text-white border-line-strong"
                     : "border-line text-slate-400 hover:text-white"
@@ -64,7 +64,7 @@ export default function HydrantTable({ hydrants, filtered, filters, onFiltersCha
                 title={s === "todos" ? undefined : statusLabel[s]}
                 aria-label={s === "todos" ? "Todas as situações" : statusLabel[s]}
                 onClick={() => set({ status: s })}
-                className={`px-3 py-1 rounded-full text-[11px] font-mono-t uppercase tracking-widest border transition-colors ${
+                className={`px-3 py-1 touch:min-h-11 touch:px-4 rounded-full text-note font-mono-t uppercase tracking-widest border transition-colors ${
                   filters.status === s
                     ? "bg-line text-white border-line-strong"
                     : "border-line text-slate-400 hover:text-white"
@@ -80,7 +80,7 @@ export default function HydrantTable({ hydrants, filtered, filters, onFiltersCha
       <div className="tactical-card overflow-hidden">
         <div className="max-h-[480px] overflow-y-auto overflow-x-auto">
           <table className="w-full text-sm" data-testid="hydrants-table">
-            <thead className="sticky top-0 bg-elevated text-slate-400 font-mono-t text-[10px] uppercase tracking-widest z-10 whitespace-nowrap">
+            <thead className="sticky top-0 bg-elevated text-slate-400 font-mono-t text-label uppercase tracking-widest z-10 whitespace-nowrap">
               <tr>
                 <th className="px-3 py-2 text-left">Código</th>
                 <th className="px-3 py-2 text-left">Tipo</th>
@@ -108,7 +108,7 @@ export default function HydrantTable({ hydrants, filtered, filters, onFiltersCha
                 >
                   <td className="px-3 py-2 font-mono-t text-xs font-semibold text-white whitespace-nowrap">
                     {h.url ? (
-                      <a href={h.url} target="_blank" rel="noopener noreferrer" className="hover:underline" title="Ficha do hidrante no CB SP">
+                      <a href={h.url} target="_blank" rel="noopener noreferrer" className="hover:underline touch:inline-flex touch:items-center touch:min-h-11 touch:min-w-11" title="Ficha do hidrante no CB SP">
                         {h.code}
                       </a>
                     ) : h.code}
