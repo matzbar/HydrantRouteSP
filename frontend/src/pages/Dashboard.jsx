@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "../components/ui/button";
 import { Slider } from "../components/ui/slider";
 import { Input } from "../components/ui/input";
@@ -36,6 +36,14 @@ export default function Dashboard() {
   const [route, setRoute] = useState(null);
   const [routeOpen, setRouteOpen] = useState(false);
   const [routeLoading, setRouteLoading] = useState(false);
+  // Pedido de rota em andamento. Trocar de estação ou de filtro o cancela, para que o resultado de uma estação
+  // nunca apareça em outra.
+  const routeRequest = useRef(null);
+  const cancelRoute = useCallback(() => {
+    routeRequest.current?.abort();
+    routeRequest.current = null;
+    setRouteLoading(false);
+  }, []);
   const [maxStops, setMaxStops] = useState(DEFAULT_STOPS);
   const [startId, setStartId] = useState(null);
   // Filtros da lista (busca, tipo, situação): valem também para o mapa e para a rota.
@@ -104,6 +112,7 @@ export default function Dashboard() {
 
   // Trocar de estação limpa a tela.
   useEffect(() => {
+    cancelRoute();
     setData(null);
     setStationErr(null);
     setRoute(null);
@@ -111,7 +120,7 @@ export default function Dashboard() {
     setStartId(null);
     setMaxStops(DEFAULT_STOPS); // cada estação começa com a quantidade padrão (limitada aos hidrantes dela)
     setFilters(NO_FILTERS);
-  }, [sel.code]);
+  }, [sel.code, cancelRoute]);
 
   // Carrega os hidrantes da estação e acompanha a geocodificação até terminar.
   useEffect(() => {
@@ -180,9 +189,10 @@ export default function Dashboard() {
 
   // Mudar o filtro descarta a rota gerada: ela deixaria de corresponder ao que está no mapa.
   useEffect(() => {
+    cancelRoute();
     setRoute(null);
     setRouteOpen(false);
-  }, [filters]);
+  }, [filters, cancelRoute]);
 
   // A primeira parada precisa estar entre os hidrantes do filtro; se sair dele, volta para automática.
   useEffect(() => {
@@ -205,6 +215,9 @@ export default function Dashboard() {
   const handleRoute = async () => {
     if (located.length === 0) { toast.error("Nenhum hidrante no mapa para gerar a rota"); return; }
     const origin = gps || SP_FALLBACK;
+    routeRequest.current?.abort();
+    const request = new AbortController();
+    routeRequest.current = request;
     setRouteLoading(true);
     try {
       const result = await optimizeRoute({
@@ -213,7 +226,8 @@ export default function Dashboard() {
         points: located.map((h) => ({ id: h.id, lat: h.lat, lon: h.lon })),
         max_stops: stopsShown,
         start_id: startId,
-      });
+      }, request.signal);
+      if (request.signal.aborted) return; // a estação ou o filtro mudou durante o cálculo
       const byId = new Map(hydrants.map((h) => [h.id, h]));
       setRoute({
         ...result,
@@ -224,9 +238,12 @@ export default function Dashboard() {
       setRouteOpen(true);
       toast.success(`Rota com ${result.stops.length} paradas gerada`);
     } catch (e) {
-      toast.error(errorMessage(e, "Erro ao gerar rota"));
+      if (!request.signal.aborted) toast.error(errorMessage(e, "Erro ao gerar rota"));
     } finally {
-      setRouteLoading(false);
+      if (routeRequest.current === request) {
+        routeRequest.current = null;
+        setRouteLoading(false);
+      }
     }
   };
 

@@ -17,4 +17,5 @@ export const getConfig = () => api.get("/config").then((r) => r.data);
 export const listStations = () => api.get("/stations").then((r) => r.data);
 export const getStationHydrants = (code) => api.get(`/stations/${code}/hydrants`).then((r) => r.data);
 export const retryStationGeocode = (code) => api.post(`/stations/${code}/geocode-retry`).then((r) => r.data);
-export const optimizeRoute = (payload) => api.post("/route/optimize", payload).then((r) => r.data);
+// `signal` (AbortController) cancela o pedido quando a rota deixa de valer (troca de estação ou de filtro).
+export const optimizeRoute = (payload, signal) => api.post("/route/optimize", payload, { signal }).then((r) => r.data);
