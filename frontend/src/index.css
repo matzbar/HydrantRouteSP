@@ -31,6 +31,8 @@ body {
   padding-right: env(safe-area-inset-right, 0px);
 }
 .safe-top { padding-top: env(safe-area-inset-top, 0px); }
+/* Ao rolar até um elemento (ex.: o mapa, pelo cartão da lista), ele para logo abaixo do cabeçalho fixo. */
+.scroll-below-header { scroll-margin-top: calc(env(safe-area-inset-top, 0px) + 80px); }
 /* Diálogos centralizados: no máximo 90% da tela e nunca embaixo das barras do sistema (status em cima, gesto embaixo)
    quando o app abre em tela cheia no iPhone. No computador, as áreas seguras valem 0 e fica 90%. */
 .max-h-dialog {

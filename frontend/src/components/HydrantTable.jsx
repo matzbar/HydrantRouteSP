@@ -1,7 +1,8 @@
 import { Input } from "./ui/input";
 import { Badge } from "./ui/badge";
 import { Search, AlertTriangle } from "lucide-react";
-import { colorOfStatus, statusLabel, statusShort, typeBadgeStyle, typeLabel } from "../lib/hydrants";
+import { colorOfStatus, formatDate, statusLabel, statusShort, typeBadgeStyle, typeLabel } from "../lib/hydrants";
+import HydrantCards from "./HydrantCards";
 
 // Rótulo acima de cada controle: menor e mais claro que o conteúdo, como os cabeçalhos da tabela.
 const FILTER_LABEL = "text-label font-mono-t uppercase tracking-widest text-slate-400";
@@ -10,10 +11,13 @@ const FILTER_LABEL = "text-label font-mono-t uppercase tracking-widest text-slat
 const FILTER_BOX = "flex gap-1.5 flex-wrap items-center min-h-10 rounded-lg bg-page border border-line px-1.5 py-1 touch:p-2";
 
 /**
- * Lista de hidrantes. Os filtros (busca, tipo, situação) ficam na página, porque também valem para o mapa e a
- * rota: a tabela recebe a lista já filtrada e o total da estação.
+ * Lista de hidrantes: tabela a partir de 768 px (tablet, computador) e cartões no celular. Os filtros (busca, tipo,
+ * situação) ficam na página, porque também valem para o mapa e a rota: a lista recebe os hidrantes já filtrados e o
+ * total da estação. `onShowOnMap(id)`: tocar num cartão leva ao hidrante no mapa.
  */
-export default function HydrantTable({ hydrants, filtered, filters, onFiltersChange, emptyMessage = "Nenhum hidrante encontrado." }) {
+export default function HydrantTable({ hydrants, filtered, filters, onFiltersChange, onShowOnMap,
+  emptyMessage = "Nenhum hidrante encontrado." }) {
+  const empty = hydrants.length === 0 ? emptyMessage : "Nenhum hidrante encontrado com esses filtros.";
   const set = (patch) => onFiltersChange({ ...filters, ...patch });
 
   return (
@@ -78,7 +82,12 @@ export default function HydrantTable({ hydrants, filtered, filters, onFiltersCha
         </div>
       </div>
 
-      <div className="tactical-card overflow-hidden">
+      <div className="md:hidden">
+        {filtered.length === 0
+          ? <p className="py-10 text-center text-sm text-slate-400" data-testid="hydrant-cards-empty">{empty}</p>
+          : <HydrantCards hydrants={filtered} onShowOnMap={onShowOnMap} />}
+      </div>
+      <div className="tactical-card overflow-hidden hidden md:block">
         <div className="max-h-[480px] overflow-y-auto overflow-x-auto">
           <table className="w-full text-sm" data-testid="hydrants-table">
             <thead className="sticky top-0 bg-elevated text-slate-400 font-mono-t text-label uppercase tracking-widest z-10 whitespace-nowrap">
@@ -97,7 +106,7 @@ export default function HydrantTable({ hydrants, filtered, filters, onFiltersCha
               {filtered.length === 0 && (
                 <tr>
                   <td colSpan={8} className="px-3 py-10 text-center text-slate-400">
-                    {hydrants.length === 0 ? emptyMessage : "Nenhum hidrante encontrado com esses filtros."}
+                    {empty}
                   </td>
                 </tr>
               )}
@@ -134,7 +143,7 @@ export default function HydrantTable({ hydrants, filtered, filters, onFiltersCha
                   </td>
                   <td className="px-3 py-2 text-slate-400 text-xs">{h.municipality}</td>
                   <td className="px-3 py-2 text-slate-400 text-xs font-mono-t whitespace-nowrap">
-                    {h.last_inspection ? h.last_inspection.split("-").reverse().join("/") : "—"}
+                    {formatDate(h.last_inspection)}
                   </td>
                   <td className="px-3 py-2">
                     <span className="inline-flex items-center gap-1.5 whitespace-nowrap">

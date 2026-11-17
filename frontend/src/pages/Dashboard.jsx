@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Toaster, toast } from "sonner";
 import { RefreshCw } from "lucide-react";
 import { Button } from "../components/ui/button";
@@ -42,6 +42,30 @@ export default function Dashboard() {
   const [startId, setStartId] = useState(null);
   // Filtros da lista (busca, tipo, situação): valem também para o mapa e para a rota.
   const [filters, setFilters] = useState(NO_FILTERS);
+  // Hidrante a mostrar no mapa (toque num cartão da lista); `n` muda a cada toque.
+  const [mapFocus, setMapFocus] = useState(null);
+
+  // Rola até o mapa e, só quando a rolagem termina, aproxima no hidrante e abre o popup: aberto no meio da rolagem,
+  // o ajuste que mantém o popup abaixo do cabeçalho deslocaria o mapa e o hidrante sairia da tela.
+  const showOnMap = useCallback((id) => {
+    const focus = () => setMapFocus((prev) => ({ id, n: (prev?.n || 0) + 1 }));
+    const map = document.getElementById("mapa");
+    if (!map) { focus(); return; }
+    const reduce = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+    let done = false;
+    const finish = () => {
+      if (done) return;
+      done = true;
+      window.removeEventListener("scrollend", finish);
+      focus();
+    };
+    if (!reduce) {
+      window.addEventListener("scrollend", finish, { once: true });
+      setTimeout(finish, 900); // navegador sem "scrollend", ou mapa já no lugar (não há rolagem)
+    }
+    map.scrollIntoView({ behavior: reduce ? "auto" : "smooth", block: "start" });
+    if (reduce) finish();
+  }, []);
 
   // Trocar de estação recomeça: sem rota, sem primeira parada, quantidade padrão e sem filtros.
   useEffect(() => {
@@ -118,6 +142,7 @@ export default function Dashboard() {
         filtered={visible}
         filters={filters}
         onFiltersChange={setFilters}
+        onShowOnMap={showOnMap}
         emptyMessage="Esta estação não tem hidrantes pendentes de vistoria neste ciclo."
       />
     );
@@ -181,6 +206,7 @@ export default function Dashboard() {
             onMap={onMap}
             allOnMap={allLocatedCount}
             filtering={filtering}
+            focus={mapFocus}
           />
 
           <div className="tactical-card p-5">

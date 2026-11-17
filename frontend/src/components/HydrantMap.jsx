@@ -1,5 +1,5 @@
-import { useEffect, useMemo } from "react";
-import { MapContainer, TileLayer, Marker, Popup, Polyline, useMap, useMapEvents } from "react-leaflet";
+import { useEffect, useMemo, useRef } from "react";
+import { MapContainer, TileLayer, Marker, Popup, Polyline, ZoomControl, useMap, useMapEvents } from "react-leaflet";
 import L from "leaflet";
 import { colorOfStatus, statusLabel, typeColor, typeLabel } from "../lib/hydrants";
 import { SP_CENTER, mapView } from "../lib/mapView";
@@ -54,6 +54,33 @@ function FitView({ view, fitKey }) {
 // Linha da rota: mesma cor de "route" no tema (o Leaflet desenha em SVG e precisa do valor).
 const ROUTE_LINE = { color: "#38BDF8", weight: 4, opacity: 0.85, dashArray: "8 6" };
 
+// Leva o mapa até um hidrante e abre o popup dele (toque num cartão da lista, no celular). `focus.n` muda a cada
+// pedido, para o mesmo hidrante poder ser pedido de novo.
+const FOCUS_ZOOM = 17;
+function FocusHydrant({ focus, hydrants, markers }) {
+  const map = useMap();
+  useEffect(() => {
+    if (!focus) return;
+    const h = hydrants.find((x) => x.id === focus.id);
+    const marker = markers.current.get(focus.id);
+    if (!h || !marker) return;
+    map.setView([h.lat, h.lon], Math.max(map.getZoom(), FOCUS_ZOOM), { animate: false });
+    marker.openPopup();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [focus?.n, map]);
+  return null;
+}
+
+// Tela de toque (celular): botões de zoom no canto inferior esquerdo, perto do polegar, deixando o topo do mapa livre
+// para o popup. No computador, no canto superior esquerdo, como de costume.
+const TOUCH = typeof window !== "undefined" && window.matchMedia?.("(pointer: coarse)").matches;
+// Ao abrir, o popup é deslocado para não ficar sob o selo "N hidrantes no mapa" (topo) e os botões de zoom, nem
+// colado nas bordas.
+// No celular, o popup também fica mais estreito, para caber no mapa (cerca de 330 px de largura) com folga.
+const POPUP_PAN = TOUCH
+  ? { autoPanPaddingTopLeft: [12, 48], autoPanPaddingBottomRight: [12, 24], maxWidth: 250 }
+  : { autoPanPaddingTopLeft: [12, 84], autoPanPaddingBottomRight: [12, 24] };
+
 const POPUP_MARGIN_PX = 8;
 const AUTOPAN_WAIT_MS = 300; // o autoPan do Leaflet anima por ~250 ms; o ajuste roda depois dele
 
@@ -75,7 +102,8 @@ function KeepPopupBelowHeader() {
   return null;
 }
 
-export default function HydrantMap({ tiles, hydrants, gps, routeOrder, routePolyline, fitKey }) {
+export default function HydrantMap({ tiles, hydrants, gps, routeOrder, routePolyline, fitKey, focus }) {
+  const markers = useRef(new Map()); // id do hidrante → marcador do Leaflet (para abrir o popup pelo foco)
   const geocoded = useMemo(() => hydrants.filter((h) => h.lat != null && h.lon != null), [hydrants]);
   const view = useMemo(() => mapView(geocoded.map((h) => [h.lat, h.lon]), gps), [geocoded, gps]);
 
@@ -95,7 +123,9 @@ export default function HydrantMap({ tiles, hydrants, gps, routeOrder, routePoly
         // (marcadores e a linha de créditos dos mapas, exigida pela licença), onde o quadro é mais baixo.
         style={{ height: "100%", width: "100%" }}
         scrollWheelZoom
+        zoomControl={false}
       >
+        <ZoomControl position={TOUCH ? "bottomleft" : "topleft"} />
         {/* Só desenha o fundo depois de saber o provedor, para não carregar dois mapas. */}
         {tiles && (
           <TileLayer
@@ -116,8 +146,9 @@ export default function HydrantMap({ tiles, hydrants, gps, routeOrder, routePoly
         {geocoded.map((h) => {
           const idx = orderIndex?.get(h.id);
           return (
-            <Marker key={h.id} position={[h.lat, h.lon]} icon={hydrantIcon(h, idx)}>
-              <Popup>
+            <Marker key={h.id} position={[h.lat, h.lon]} icon={hydrantIcon(h, idx)}
+              ref={(m) => (m ? markers.current.set(h.id, m) : markers.current.delete(h.id))}>
+              <Popup {...POPUP_PAN}>
                 <div className="hydrant-popup">
                   <div className="hydrant-popup__code">{h.code}</div>
                   <div className="hydrant-popup__kind">
@@ -140,6 +171,7 @@ export default function HydrantMap({ tiles, hydrants, gps, routeOrder, routePoly
             </Marker>
           );
         })}
+        <FocusHydrant focus={focus} hydrants={geocoded} markers={markers} />
         {routePolyline && routePolyline.length > 1 && (
           <Polyline positions={routePolyline} pathOptions={ROUTE_LINE} />
         )}
