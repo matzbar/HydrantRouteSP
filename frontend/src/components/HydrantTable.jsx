@@ -42,7 +42,7 @@ export default function HydrantTable({ hydrants, filtered, filters, onFiltersCha
                 type="button"
                 data-testid={`filter-type-${t}`}
                 onClick={() => set({ type: t })}
-                className={`px-3 py-1 touch:min-h-11 touch:px-4 rounded-full text-note font-mono-t uppercase tracking-widest border transition-colors ${
+                className={`px-3 py-1 touch:min-h-9 touch:px-4 rounded-full text-note font-mono-t uppercase tracking-widest border transition-colors ${
                   filters.type === t
                     ? "bg-line text-white border-line-strong"
                     : "border-line text-slate-400 hover:text-white"
@@ -64,7 +64,7 @@ export default function HydrantTable({ hydrants, filtered, filters, onFiltersCha
                 title={s === "todos" ? undefined : statusLabel[s]}
                 aria-label={s === "todos" ? "Todas as situações" : statusLabel[s]}
                 onClick={() => set({ status: s })}
-                className={`px-3 py-1 touch:min-h-11 touch:px-4 rounded-full text-note font-mono-t uppercase tracking-widest border transition-colors ${
+                className={`px-3 py-1 touch:min-h-9 touch:px-4 rounded-full text-note font-mono-t uppercase tracking-widest border transition-colors ${
                   filters.status === s
                     ? "bg-line text-white border-line-strong"
                     : "border-line text-slate-400 hover:text-white"
