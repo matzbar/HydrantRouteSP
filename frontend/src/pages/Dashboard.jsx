@@ -125,7 +125,15 @@ export default function Dashboard() {
 
   return (
     <div className="min-h-screen bg-page text-slate-100 relative">
-      <Toaster theme="dark" position="top-right" richColors />
+      {/* Mensagens abaixo da barra de status do celular (hora, bateria) quando o app abre em tela cheia; fora disso
+          a área segura vale 0 e as distâncias são as padrão (24 px no computador, 16 px no celular). */}
+      <Toaster
+        theme="dark"
+        position="top-right"
+        richColors
+        offset={{ top: "calc(env(safe-area-inset-top, 0px) + 24px)" }}
+        mobileOffset={{ top: "calc(env(safe-area-inset-top, 0px) + 16px)" }}
+      />
       <div className="grain-overlay" />
 
       <AppHeader gps={gps} gpsErr={gpsErr} onRefreshGps={requestGps} onInstall={installApp.canInstall ? installApp.install : null} />
