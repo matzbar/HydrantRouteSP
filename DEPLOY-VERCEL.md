@@ -85,8 +85,17 @@ O MongoDB Atlas não precisa de mudança: o acesso já está liberado para `0.0.
 2. Avise os usuários do endereço novo. Quem instalou o app no celular ("Adicionar à tela inicial") precisa
    instalar de novo pelo endereço novo.
 3. No MapTiler, **remova** a origem `...onrender.com`.
-4. No Render, abra o serviço → **Settings** → no fim da página, **Suspend Web Service** (pode reativar se precisar)
-   e, depois de alguns dias sem problema, **Delete Web Service**. Isso também para os deploys automáticos de lá.
+4. **Redirecionar o endereço antigo do Render para a Vercel** (links salvos e o app instalado continuam funcionando):
+   1. No Render, abra o serviço → **Environment** → **+ Add Environment Variable**:
+      `REDIRECT_TO` = `https://hydrantroutesp.vercel.app` (o endereço da Vercel, **sem barra no fim**).
+   2. Clique em **Save Changes** e escolha **Save and deploy**.
+   3. Teste: abra `https://SEU-APP.onrender.com` e veja se o navegador vai para o endereço da Vercel.
+
+   Com o `REDIRECT_TO`, o serviço do Render só responde com o redirecionamento (308, mantendo caminho e
+   parâmetros): não consulta o CB SP, o banco nem o OSRM. As outras variáveis (`MONGO_URL`, `MAPTILER_KEY`…)
+   podem ser apagadas de lá. No plano gratuito ele ainda "dorme": o primeiro acesso depois de um tempo demora
+   30–60 s para redirecionar. Quando ninguém mais usar o endereço antigo, apague o serviço no Render
+   (**Settings → Delete Web Service**).
 
 A partir daqui, todo merge na `main` publica sozinho na Vercel, e cada pull request ganha um endereço de
 pré-visualização (*Preview*) para testar antes do merge.

@@ -15,7 +15,7 @@ from typing import List, Optional
 from urllib.parse import urljoin
 
 from fastapi import APIRouter, FastAPI, HTTPException, Path as PathParam, Request
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, RedirectResponse
 from pydantic import BaseModel, Field
 from starlette.middleware.cors import CORSMiddleware
 
@@ -24,7 +24,7 @@ import geocoding
 import map_quota
 import osrm
 from config import (BUILD_COMMIT, CB_INDEX_URL, CLIENT_IP_HEADER, MAPTILER_CUTOFF_PERCENT, MAPTILER_KEY,
-                    MAPTILER_STYLE, MAX_ROUTE_POINTS, MAX_ROUTE_STOPS, MONITOR_CLIENT_KEY, MONITOR_URL, ON_RENDER, ON_VERCEL, OSRM_TABLE_MAX, RATE_LIMIT_PER_MIN, ROUTE_GLOBAL_LIMIT_PER_MIN,
+                    MAPTILER_STYLE, MAX_ROUTE_POINTS, MAX_ROUTE_STOPS, MONITOR_CLIENT_KEY, MONITOR_URL, ON_RENDER, ON_VERCEL, OSRM_TABLE_MAX, RATE_LIMIT_PER_MIN, REDIRECT_TO, ROUTE_GLOBAL_LIMIT_PER_MIN,
                     ROUTE_RATE_LIMIT_PER_MIN, SP_BOUNDS, STATION_CODE_PATTERN, TRUSTED_PROXY_HOPS)
 from ratelimit import RateLimiter, client_ip
 from security import cache_control, security_headers
@@ -329,6 +329,22 @@ app.add_middleware(
     allow_methods=["GET", "POST"],
     allow_headers=["*"],
 )
+
+
+
+@app.middleware("http")
+async def redirect_to_new_address(request: Request, call_next):
+    """Com REDIRECT_TO, manda tudo para o endereço novo (mesmo caminho e parâmetros).
+
+    É o middleware mais externo: responde antes do limitador e sem ligar banco nem fila. O 308 mantém o método,
+    então até o POST de rota de um app antigo aberto no celular chega ao endereço novo.
+    """
+    if not REDIRECT_TO:
+        return await call_next(request)
+    query = request.url.query
+    target = f"{REDIRECT_TO}{request.url.path}" + (f"?{query}" if query else "")
+    return RedirectResponse(target, status_code=308, headers={"Cache-Control": "no-cache"})
+
 
 # Serve o React compilado no mesmo serviço quando disponível (imagem Docker / deploy único).
 STATIC_DIR = Path(os.environ.get("STATIC_DIR", ROOT_DIR.parent / "frontend" / "build"))

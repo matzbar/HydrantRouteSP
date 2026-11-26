@@ -50,6 +50,7 @@ Todas opcionais. Modelo em [`backend/.env.example`](backend/.env.example).
 | `MAX_ROUTE_STOPS` | `25` | Máximo de paradas por rota. Todos os hidrantes da estação continuam no mapa e entram como candidatos; a rota escolhe os melhores até esse número |
 | `MAX_ROUTE_POINTS` | `350` | Máximo de candidatos por pedido de rota (a maior estação tem 329 hidrantes). Não limita o mapa |
 | `ROUTE_GLOBAL_LIMIT_PER_MIN` | `60` | Cálculos de rota por minuto somando todos os usuários (protege a instância e o OSRM de abuso vindo de muitos IPs). 60 = 1 por segundo, o máximo do servidor público do OSRM |
+| `REDIRECT_TO` | (vazio) | Endereço novo do app (`https://dominio`, sem caminho). Com ele, este servidor só redireciona (308) tudo para lá: use no serviço antigo depois de uma migração (veja [DEPLOY-VERCEL.md](DEPLOY-VERCEL.md)) |
 | `CLIENT_IP_HEADER` | `cf-connecting-ip` no Render, `x-real-ip` na Vercel, vazio fora | Cabeçalho com o IP do usuário escrito por um proxy confiável (a Cloudflare reescreve o `CF-Connecting-IP`; o cliente não consegue falsificá-lo) |
 | `TRUSTED_PROXY_HOPS` | `2` no Render, `0` fora | Alternativa ao cabeçalho acima: quantos proxies confiáveis acrescentam IPs ao `X-Forwarded-For`. Com `0`, vale o IP da conexão |
 
