@@ -24,7 +24,7 @@ import geocoding
 import map_quota
 import osrm
 from config import (BUILD_COMMIT, CB_INDEX_URL, CLIENT_IP_HEADER, MAPTILER_CUTOFF_PERCENT, MAPTILER_KEY,
-                    MAPTILER_STYLE, MAX_ROUTE_POINTS, MAX_ROUTE_STOPS, MONITOR_CLIENT_KEY, MONITOR_URL, ON_RENDER, OSRM_TABLE_MAX, RATE_LIMIT_PER_MIN, ROUTE_GLOBAL_LIMIT_PER_MIN,
+                    MAPTILER_STYLE, MAX_ROUTE_POINTS, MAX_ROUTE_STOPS, MONITOR_CLIENT_KEY, MONITOR_URL, ON_RENDER, ON_VERCEL, OSRM_TABLE_MAX, RATE_LIMIT_PER_MIN, ROUTE_GLOBAL_LIMIT_PER_MIN,
                     ROUTE_RATE_LIMIT_PER_MIN, SP_BOUNDS, STATION_CODE_PATTERN, TRUSTED_PROXY_HOPS)
 from ratelimit import RateLimiter, client_ip
 from security import cache_control, security_headers
@@ -76,24 +76,52 @@ class RouteResponse(BaseModel):
 MAP_QUOTA = map_quota.QuotaGuard(MONITOR_URL, MONITOR_CLIENT_KEY, MAPTILER_CUTOFF_PERCENT)
 
 
+class Services:
+    """Banco, fila de localização por endereço e corte do MapTiler: ligados uma vez por processo.
+
+    Num servidor comum (Docker, Render) isso acontece ao subir o app (lifespan). Na Vercel (funções serverless) o
+    lifespan pode não rodar; por isso a primeira requisição também liga tudo, se ainda não estiver ligado.
+    """
+
+    def __init__(self):
+        self.started = False
+        self.index_task: Optional[asyncio.Task] = None
+
+    def ensure_started(self) -> None:
+        if self.started:
+            return
+        self.started = True
+        geocoding.GEOCACHE.connect(os.environ.get("MONGO_URL"), os.environ.get("DB_NAME", "hydrantroute"))
+        self.index_task = asyncio.create_task(geocoding.GEOCACHE.ensure_index())
+        geocoding.GEOCODER.start()
+        if geocoding.GEOCACHE.coll is not None:
+            MAP_QUOTA.coll = geocoding.GEOCACHE.coll.database["map_quota"]
+        if MAPTILER_KEY:
+            MAP_QUOTA.refresh_in_background()  # lê a decisão guardada (e consulta o monitor, se ela for antiga)
+
+    async def stop(self) -> None:
+        if not self.started:
+            return
+        self.started = False
+        await MAP_QUOTA.stop()
+        await geocoding.GEOCODER.stop()
+        if self.index_task:
+            self.index_task.cancel()
+            with suppress(asyncio.CancelledError):
+                await self.index_task
+        geocoding.GEOCACHE.close()
+
+
+SERVICES = Services()
+
+
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
-    geocoding.GEOCACHE.connect(os.environ.get("MONGO_URL"), os.environ.get("DB_NAME", "hydrantroute"))
-    index_task = asyncio.create_task(geocoding.GEOCACHE.ensure_index())
-    geocoding.GEOCODER.start()
-    if geocoding.GEOCACHE.coll is not None:
-        MAP_QUOTA.coll = geocoding.GEOCACHE.coll.database["map_quota"]
-    if MAPTILER_KEY:
-        MAP_QUOTA.refresh_in_background()  # lê a decisão guardada (e consulta o monitor, se ela for antiga)
+    SERVICES.ensure_started()
     try:
         yield
     finally:
-        await MAP_QUOTA.stop()
-        await geocoding.GEOCODER.stop()
-        index_task.cancel()
-        with suppress(asyncio.CancelledError):
-            await index_task
-        geocoding.GEOCACHE.close()
+        await SERVICES.stop()
 
 
 app = FastAPI(title="HydrantRoute SP", lifespan=lifespan)
@@ -109,6 +137,7 @@ ROUTES_BUSY = "O cálculo de rotas está muito requisitado no momento. Tente nov
 @app.middleware("http")
 async def rate_limit(request: Request, call_next):
     """Protege a API (e os serviços externos que ela consulta) de uso abusivo, por IP."""
+    SERVICES.ensure_started()  # na Vercel, o lifespan pode não ter rodado
     path = request.url.path
     if path.startswith("/api"):
         ip = client_ip(request.headers, request.client.host if request.client else None, TRUSTED_PROXY_HOPS,
@@ -152,6 +181,7 @@ async def root(request: Request):
         "build": BUILD_COMMIT,
         "client_ip": {
             "render": ON_RENDER,
+            "vercel": ON_VERCEL,
             "header": CLIENT_IP_HEADER or None,
             "header_present": bool(CLIENT_IP_HEADER and request.headers.get(CLIENT_IP_HEADER)),
             "trusted_proxy_hops": TRUSTED_PROXY_HOPS,

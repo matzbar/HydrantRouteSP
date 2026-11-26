@@ -29,3 +29,6 @@ yarn-error.log*
 
 # Testes
 coverage/
+
+# Vercel (vercel link / vercel build locais)
+.vercel/

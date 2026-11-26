@@ -50,7 +50,7 @@ Todas opcionais. Modelo em [`backend/.env.example`](backend/.env.example).
 | `MAX_ROUTE_STOPS` | `25` | Máximo de paradas por rota. Todos os hidrantes da estação continuam no mapa e entram como candidatos; a rota escolhe os melhores até esse número |
 | `MAX_ROUTE_POINTS` | `350` | Máximo de candidatos por pedido de rota (a maior estação tem 329 hidrantes). Não limita o mapa |
 | `ROUTE_GLOBAL_LIMIT_PER_MIN` | `60` | Cálculos de rota por minuto somando todos os usuários (protege a instância e o OSRM de abuso vindo de muitos IPs). 60 = 1 por segundo, o máximo do servidor público do OSRM |
-| `CLIENT_IP_HEADER` | `cf-connecting-ip` no Render, vazio fora | Cabeçalho com o IP do usuário escrito por um proxy confiável (a Cloudflare reescreve o `CF-Connecting-IP`; o cliente não consegue falsificá-lo) |
+| `CLIENT_IP_HEADER` | `cf-connecting-ip` no Render, `x-real-ip` na Vercel, vazio fora | Cabeçalho com o IP do usuário escrito por um proxy confiável (a Cloudflare reescreve o `CF-Connecting-IP`; o cliente não consegue falsificá-lo) |
 | `TRUSTED_PROXY_HOPS` | `2` no Render, `0` fora | Alternativa ao cabeçalho acima: quantos proxies confiáveis acrescentam IPs ao `X-Forwarded-For`. Com `0`, vale o IP da conexão |
 
 ## Rodar com Docker (local ou VPS)
@@ -64,12 +64,13 @@ docker compose up -d --build        # app + MongoDB
 ## Deploy na nuvem (grátis)
 
 👉 **Passo a passo detalhado para iniciantes: [DEPLOY.md](DEPLOY.md)**
+👉 **Na Vercel (ou migrando do Render para a Vercel): [DEPLOY-VERCEL.md](DEPLOY-VERCEL.md)**
 
 1. **Banco (opcional):** crie um cluster gratuito (M0) no [MongoDB Atlas](https://www.mongodb.com/atlas), libere acesso de `0.0.0.0/0` e copie a connection string.
-2. **App:** no [Render](https://render.com) (ou Railway/Fly.io), crie um *Web Service* apontando para este repositório. Ele detecta o `Dockerfile` sozinho.
+2. **App:** na [Vercel](https://vercel.com), importe o repositório (raiz `./`, preset *Other*): o `vercel.json` publica o site na CDN e a API como função Python (`api/index.py`). Ou, no [Render](https://render.com) (ou Railway/Fly.io), crie um *Web Service* apontando para este repositório: ele detecta o `Dockerfile` sozinho.
 3. Configure `MONGO_URL` e `DB_NAME`. Pronto: o site e a API sobem na mesma URL.
 
-> Rode com **1 instância/worker**: a fila de localização pelo endereço e os caches ficam na memória do processo.
+> No Docker/Render, rode com **1 instância/worker**: a fila de localização pelo endereço e os caches ficam na memória do processo. Na Vercel, que pode rodar várias cópias da função, configure o `MONGO_URL` para as cópias compartilharem as coordenadas (veja [DEPLOY-VERCEL.md](DEPLOY-VERCEL.md)).
 
 ### Quantas rotas o app gera
 
