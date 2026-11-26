@@ -42,15 +42,20 @@ ROUTE_RATE_LIMIT_PER_MIN = int(os.environ.get("ROUTE_RATE_LIMIT_PER_MIN", "20"))
 # deixaria a instância única lenta e poderia fazer o OSRM público bloquear o servidor. 60/min = 1 rota por segundo,
 # o máximo que a política do servidor público do OSRM (FOSSGIS) aceita. Com um OSRM próprio, pode subir.
 ROUTE_GLOBAL_LIMIT_PER_MIN = int(os.environ.get("ROUTE_GLOBAL_LIMIT_PER_MIN", "60"))
-# IP do usuário para o limite de requisições (veja ratelimit.client_ip). O Render define RENDER=true.
+# IP do usuário para o limite de requisições (veja ratelimit.client_ip). O Render define RENDER=true; a Vercel,
+# VERCEL=1.
 ON_RENDER = bool(os.environ.get("RENDER"))
+ON_VERCEL = bool(os.environ.get("VERCEL"))
 # Cabeçalho com o IP do visitante escrito por um proxy confiável. No Render, que fica atrás da Cloudflare, é o
-# CF-Connecting-IP: a Cloudflare o reescreve na borda, então o cliente não consegue falsificá-lo.
-CLIENT_IP_HEADER = os.environ.get("CLIENT_IP_HEADER", "cf-connecting-ip" if ON_RENDER else "").strip().lower()
+# CF-Connecting-IP: a Cloudflare o reescreve na borda, então o cliente não consegue falsificá-lo. Na Vercel, o
+# X-Real-IP, que a borda da Vercel sempre reescreve com o IP de quem se conectou.
+_DEFAULT_IP_HEADER = "cf-connecting-ip" if ON_RENDER else "x-real-ip" if ON_VERCEL else ""
+CLIENT_IP_HEADER = os.environ.get("CLIENT_IP_HEADER", _DEFAULT_IP_HEADER).strip().lower()
 # Alternativa: quantos proxies confiáveis acrescentam IPs ao X-Forwarded-For. Fora do Render, 0: vale o IP da conexão.
 TRUSTED_PROXY_HOPS = int(os.environ.get("TRUSTED_PROXY_HOPS", "2" if ON_RENDER else "0"))
-# Versão em execução (o Render define RENDER_GIT_COMMIT), exibida no endpoint de status.
-BUILD_COMMIT = (os.environ.get("RENDER_GIT_COMMIT") or os.environ.get("GIT_COMMIT") or "")[:7] or None
+# Versão em execução (o Render define RENDER_GIT_COMMIT; a Vercel, VERCEL_GIT_COMMIT_SHA), exibida no status.
+BUILD_COMMIT = (os.environ.get("RENDER_GIT_COMMIT") or os.environ.get("VERCEL_GIT_COMMIT_SHA")
+                or os.environ.get("GIT_COMMIT") or "")[:7] or None
 
 STATION_CODE_PATTERN = r"^\d{9}$"
 INDEX_TTL_S = 60 * 60  # o índice de estações muda pouco
