@@ -85,3 +85,11 @@ MAPTILER_STYLE = _style if re.fullmatch(r"[a-z0-9-]{1,40}", _style) else "street
 MONITOR_URL = os.environ.get("MONITOR_URL", "").strip().rstrip("/")
 MONITOR_CLIENT_KEY = os.environ.get("MONITOR_CLIENT_KEY", "").strip()
 MAPTILER_CUTOFF_PERCENT = min(max(float(os.environ.get("MAPTILER_CUTOFF_PERCENT", "99")), 1.0), 100.0)
+
+# Endereço novo do app (ex.: https://hydrantroute-sp.vercel.app). Com ele definido, este servidor só redireciona:
+# toda requisição recebe um 308 para o mesmo caminho no endereço novo. Serve para aposentar um endereço antigo (o
+# serviço no Render, depois da migração para a Vercel) sem quebrar links salvos nem o app instalado no celular.
+_redirect = os.environ.get("REDIRECT_TO", "").strip().rstrip("/")
+REDIRECT_TO = _redirect if re.fullmatch(r"https://[A-Za-z0-9.-]+(:\d+)?", _redirect) else ""
+if _redirect and not REDIRECT_TO:
+    logger.warning("REDIRECT_TO ignorada: use só https://dominio, sem caminho (recebido: %r)", _redirect)

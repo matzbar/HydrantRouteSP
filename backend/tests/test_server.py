@@ -654,3 +654,31 @@ def test_cache_control(path, expected):
 
 def test_api_has_no_cache_header(client):
     assert "cache-control" not in client.get("/api/").headers
+
+
+def test_redirect_to_new_address(monkeypatch):
+    """Com REDIRECT_TO (o serviço antigo no Render), tudo vai para o endereço novo, mantendo caminho e método."""
+    import server
+
+    monkeypatch.setattr(server, "REDIRECT_TO", "https://novo.exemplo.com")
+    c = TestClient(server.app)
+    r = c.get("/api/stations?x=1", follow_redirects=False)
+    assert r.status_code == 308
+    assert r.headers["location"] == "https://novo.exemplo.com/api/stations?x=1"
+    r = c.post("/api/route/optimize", json={}, follow_redirects=False)
+    assert r.status_code == 308
+    assert r.headers["location"] == "https://novo.exemplo.com/api/route/optimize"
+    assert c.get("/", follow_redirects=False).headers["location"] == "https://novo.exemplo.com/"
+
+
+def test_redirect_to_validation(monkeypatch):
+    import importlib
+
+    import config
+
+    for value, expected in [("https://novo.exemplo.com/", "https://novo.exemplo.com"),
+                            ("http://inseguro.com", ""), ("https://a.com/caminho", ""), ("", "")]:
+        monkeypatch.setenv("REDIRECT_TO", value)
+        assert importlib.reload(config).REDIRECT_TO == expected
+    monkeypatch.delenv("REDIRECT_TO")
+    importlib.reload(config)
